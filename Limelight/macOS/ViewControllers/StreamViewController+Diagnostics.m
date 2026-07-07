@@ -2983,7 +2983,12 @@
         self.timeoutCopyLogsButton.frame = NSMakeRect(logsStartX + viewLogsWidth + logsGap, logsY, copyLogsWidth, logsBtnHeight);
     }
 
-    [self bringStreamControlsToFront];
+    // Defer to next runloop to avoid re-entrant layout crash on macOS 12
+    // (addSubview:positioned:relativeTo: during viewDidLayout triggers
+    //  EXC_BAD_INSTRUCTION in NSWindow _postWindowNeedsUpdateConstraintsUnlessPostingDisabled)
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self bringStreamControlsToFront];
+    });
 }
 
 - (void)layoutConnectionWarning {
