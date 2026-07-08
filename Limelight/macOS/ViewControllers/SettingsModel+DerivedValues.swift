@@ -208,7 +208,7 @@ import VideoToolbox
     case .standard:
       return "Keep Mac Shortcuts"
     case .commandToControl:
-      return "⌘ Always as Ctrl"
+      return "Cmd Always as Ctrl"
     case .swapLeftControlAndWin:
       return "Left Ctrl ↔ Left Win"
     case .shortcutTranslation:

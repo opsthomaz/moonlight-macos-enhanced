@@ -542,7 +542,7 @@ struct VideoView: View {
           Divider()
 
           ToggleCell(
-            title: "Performance Overlay (⌃⌥S)",
+            title: "Performance Overlay (Ctrl+Opt+S)",
             boolBinding: $settingsModel.showPerformanceOverlay)
 
           Divider()
