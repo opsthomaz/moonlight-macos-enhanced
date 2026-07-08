@@ -726,6 +726,24 @@ static NSString *const kMetalShaderSource = @"#include <metal_stdlib>\n"
 "    constexpr sampler textureSampler(mag_filter::linear, min_filter::linear, address::clamp_to_edge);\n"
 "    return colorTexture.sample(textureSampler, in.texCoord);\n"
 "}\n"
+"// Fast path: biplanar YCbCr to RGB conversion directly in fragment shader\n"
+"// Eliminates the need for a separate compute pass (matching moonlight-qt approach)\n"
+"struct YCbCrFastParams {\n"
+"    float3 offset;\n"
+"    float3 scale;\n"
+"    float3x3 matrix;\n"
+"};\n"
+"fragment float4 ycbcrBlitFragment(RasterizerData in [[stage_in]],\n"
+"                                 texture2d<float> textureY [[texture(0)]],\n"
+"                                 texture2d<float> textureCbCr [[texture(1)]],\n"
+"                                 constant YCbCrFastParams& params [[buffer(0)]]) {\n"
+"    constexpr sampler s(mag_filter::linear, min_filter::linear, address::clamp_to_edge);\n"
+"    float y = textureY.sample(s, in.texCoord).r;\n"
+"    float2 cbcr = textureCbCr.sample(s, in.texCoord).rg;\n"
+"    float3 ycbcr = float3(y, cbcr.x, cbcr.y);\n"
+"    float3 rgb = params.matrix * ((ycbcr - params.offset) * params.scale);\n"
+"    return float4(rgb, 1.0);\n"
+"}\n"
 "struct YCbCrConversionParameters {\n"
 "    float4 offset;\n"
 "    float4 scale;\n"
@@ -1027,6 +1045,9 @@ static BOOL MLGetSharedMetalPipelines(MTLPixelFormat pixelFormat,
     id<MTLTexture> _intermediateTexture;
     id<MTLComputePipelineState> _computePipelineState;
     id<MTLRenderPipelineState> _blitRenderPipelineState;
+    id<MTLRenderPipelineState> _ycbcrBlitPipelineState;
+    id<MTLTexture> _fastPathYTexture;
+    id<MTLTexture> _fastPathUVTexture;
     MTLPixelFormat _blitRenderPipelinePixelFormat;
     CAEDRMetadata *_hdrEDRMetadata;
     CGColorSpaceRef _hdrLinearColorSpace;
@@ -2770,6 +2791,17 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     } else {
         _blitRenderPipelinePixelFormat = _metalView.colorPixelFormat;
     }
+
+    // Create fast-path YCbCr blit pipeline (bypasses compute pass for SDR)
+    id<MTLFunction> ycbcrFragmentFunction = [library newFunctionWithName:@"ycbcrBlitFragment"];
+    MTLRenderPipelineDescriptor *ycbcrDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    ycbcrDesc.vertexFunction = vertexFunction;
+    ycbcrDesc.fragmentFunction = ycbcrFragmentFunction;
+    ycbcrDesc.colorAttachments[0].pixelFormat = _metalView.colorPixelFormat;
+    _ycbcrBlitPipelineState = [_device newRenderPipelineStateWithDescriptor:ycbcrDesc error:&error];
+    if (!_ycbcrBlitPipelineState) {
+        Log(LOG_W, @"Failed to create YCbCr fast-path pipeline: %@", error);
+    }
 }
 
 void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFrameRefCon, OSStatus status, VTDecodeInfoFlags infoFlags, CVImageBufferRef imageBuffer, CMTime presentationTimeStamp, CMTime presentationDuration) {
@@ -4282,40 +4314,61 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         if (yStatus == kCVReturnSuccess && uvStatus == kCVReturnSuccess && primaryTextureRef != NULL && secondaryTextureRef != NULL) {
             id<MTLTexture> yTexture = CVMetalTextureGetTexture(primaryTextureRef);
             id<MTLTexture> uvTexture = CVMetalTextureGetTexture(secondaryTextureRef);
-            MLYCbCrConversionParameters conversionParams =
-                MLYCbCrConversionParametersForPixelFormat(pixelFormat,
-                                                         _hdrTransferMode,
-                                                         _hdrToneMapToSDR ? -_hdrOpticalOutputScale : _hdrOpticalOutputScale,
-                                                         _hdrOutputUsesEDR,
-                                                         _hdrToneMapToSDR,
-                                                         _hdrToneMappingPolicy,
-                                                         _hdrMinLuminance,
-                                                         _hdrMaxLuminance,
-                                                         _hdrMaxAverageLuminance);
-            MTLPixelFormat intermediatePixelFormat = MTLPixelFormatBGRA8Unorm;
-            if (_enableHdr && _hdrOutputUsesEDR) {
-                intermediatePixelFormat = MTLPixelFormatRGBA16Float;
-            } else if (_enableHdr && !_hdrToneMapToSDR) {
-                intermediatePixelFormat = MTLPixelFormatBGR10A2Unorm;
+
+            // Fast path: for SDR 8-bit biplanar content without enhancement processing,
+            // render YCbCr directly via fragment shader (matching moonlight-qt approach).
+            // This eliminates the compute pass + intermediate texture overhead.
+            BOOL canUseFastPath = (!_enableHdr &&
+                                   pixelFormat != kCVPixelFormatType_420YpCbCr10BiPlanarFullRange &&
+                                   pixelFormat != kCVPixelFormatType_444YpCbCr10BiPlanarFullRange &&
+                                   pixelFormat != kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange &&
+                                   pixelFormat != kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange &&
+                                   _ycbcrBlitPipelineState != nil &&
+                                   processedFrame == NULL);
+
+            if (canUseFastPath) {
+                // Bind Y and CbCr textures directly to the fragment shader
+                sourceRGBTexture = nil; // not used; fast path renders directly
+                _fastPathYTexture = yTexture;
+                _fastPathUVTexture = uvTexture;
+            } else {
+                _fastPathYTexture = nil;
+                _fastPathUVTexture = nil;
+                MLYCbCrConversionParameters conversionParams =
+                    MLYCbCrConversionParametersForPixelFormat(pixelFormat,
+                                                             _hdrTransferMode,
+                                                             _hdrToneMapToSDR ? -_hdrOpticalOutputScale : _hdrOpticalOutputScale,
+                                                             _hdrOutputUsesEDR,
+                                                             _hdrToneMapToSDR,
+                                                             _hdrToneMappingPolicy,
+                                                             _hdrMinLuminance,
+                                                             _hdrMaxLuminance,
+                                                             _hdrMaxAverageLuminance);
+                MTLPixelFormat intermediatePixelFormat = MTLPixelFormatBGRA8Unorm;
+                if (_enableHdr && _hdrOutputUsesEDR) {
+                    intermediatePixelFormat = MTLPixelFormatRGBA16Float;
+                } else if (_enableHdr && !_hdrToneMapToSDR) {
+                    intermediatePixelFormat = MTLPixelFormatBGR10A2Unorm;
+                }
+                id<MTLTexture> intermediateTexture = [self intermediateTextureForWidth:workingWidth
+                                                                                height:workingHeight
+                                                                           pixelFormat:intermediatePixelFormat];
+
+                id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+                [computeEncoder setComputePipelineState:_computePipelineState];
+                [computeEncoder setTexture:yTexture atIndex:0];
+                [computeEncoder setTexture:uvTexture atIndex:1];
+                [computeEncoder setTexture:intermediateTexture atIndex:2];
+                [computeEncoder setBytes:&conversionParams length:sizeof(conversionParams) atIndex:0];
+
+                NSUInteger w = _computePipelineState.threadExecutionWidth;
+                NSUInteger h = MAX((NSUInteger)1, _computePipelineState.maxTotalThreadsPerThreadgroup / w);
+                MTLSize threadsPerThreadgroup = MTLSizeMake(w, h, 1);
+                MTLSize threadgroups = MTLSizeMake((workingWidth + w - 1) / w, (workingHeight + h - 1) / h, 1);
+                [computeEncoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
+                [computeEncoder endEncoding];
+                sourceRGBTexture = intermediateTexture;
             }
-            id<MTLTexture> intermediateTexture = [self intermediateTextureForWidth:workingWidth
-                                                                            height:workingHeight
-                                                                       pixelFormat:intermediatePixelFormat];
-
-            id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-            [computeEncoder setComputePipelineState:_computePipelineState];
-            [computeEncoder setTexture:yTexture atIndex:0];
-            [computeEncoder setTexture:uvTexture atIndex:1];
-            [computeEncoder setTexture:intermediateTexture atIndex:2];
-            [computeEncoder setBytes:&conversionParams length:sizeof(conversionParams) atIndex:0];
-
-            NSUInteger w = _computePipelineState.threadExecutionWidth;
-            NSUInteger h = MAX((NSUInteger)1, _computePipelineState.maxTotalThreadsPerThreadgroup / w);
-            MTLSize threadsPerThreadgroup = MTLSizeMake(w, h, 1);
-            MTLSize threadgroups = MTLSizeMake((workingWidth + w - 1) / w, (workingHeight + h - 1) / h, 1);
-            [computeEncoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
-            [computeEncoder endEncoding];
-            sourceRGBTexture = intermediateTexture;
         }
     } else if (pixelFormat == kCVPixelFormatType_32BGRA) {
         CVReturn textureStatus = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
@@ -4334,7 +4387,10 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         Log(LOG_W, @"[video] Unsupported enhanced pixel format: 0x%X planes=%zu", (unsigned int)pixelFormat, planeCount);
     }
 
-    if (sourceRGBTexture != nil) {
+    // Fast path: SDR biplanar content renders YCbCr directly via fragment shader
+    BOOL usingFastPath = (_fastPathYTexture != nil && _fastPathUVTexture != nil);
+
+    if (sourceRGBTexture != nil || usingFastPath) {
         CAMetalLayer *metalLayer = (CAMetalLayer *)view.layer;
         if ([metalLayer isKindOfClass:[CAMetalLayer class]]) {
             [self applyHDRPresentationStateToMetalLayer:metalLayer];
@@ -4401,7 +4457,47 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         }
 
         BOOL usedMetalFX = NO;
-        if (_activeEnhancementEngine == MLActiveVideoEnhancementEngineMetalFXQuality ||
+        if (usingFastPath) {
+            // Render YCbCr directly to drawable via fragment shader (no compute pass)
+            MTLRenderPassDescriptor *passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+            passDescriptor.colorAttachments[0].texture = drawable.texture;
+            passDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+            passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+            id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
+            if (renderEncoder != nil) {
+                [renderEncoder setRenderPipelineState:_ycbcrBlitPipelineState];
+                [renderEncoder setFragmentTexture:_fastPathYTexture atIndex:0];
+                [renderEncoder setFragmentTexture:_fastPathUVTexture atIndex:1];
+                // Select CSC parameters based on pixel format
+                BOOL isFullRange = (pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
+                                    pixelFormat == kCVPixelFormatType_444YpCbCr8BiPlanarFullRange);
+                struct {
+                    float3 offset; float _pad0;
+                    float3 scale; float _pad1;
+                    float3x3 matrix;
+                } fastParams;
+                if (isFullRange) {
+                    // BT.601 full range
+                    fastParams.offset = (float3){0.0f, 128.0f/255.0f, 128.0f/255.0f};
+                    fastParams.scale = (float3){1.0f, 1.0f, 1.0f};
+                    fastParams.matrix = float3x3(float3(1.0f, 0.0f, 1.4020f),
+                                                 float3(1.0f, -0.3441f, -0.7141f),
+                                                 float3(1.0f, 1.7720f, 0.0f));
+                } else {
+                    // BT.601 limited range (most common for SDR streaming)
+                    fastParams.offset = (float3){16.0f/255.0f, 128.0f/255.0f, 128.0f/255.0f};
+                    fastParams.scale = (float3){1.1644f, 1.1644f, 1.1644f};
+                    fastParams.matrix = float3x3(float3(1.1644f, 0.0f, 1.5960f),
+                                                 float3(1.1644f, -0.3917f, -0.8129f),
+                                                 float3(1.1644f, 2.0172f, 0.0f));
+                }
+                [renderEncoder setFragmentBytes:&fastParams length:sizeof(fastParams) atIndex:0];
+                [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+                [renderEncoder endEncoding];
+            }
+            _fastPathYTexture = nil;
+            _fastPathUVTexture = nil;
+        } else if (_activeEnhancementEngine == MLActiveVideoEnhancementEngineMetalFXQuality ||
             _activeEnhancementEngine == MLActiveVideoEnhancementEngineMetalFXPerformance) {
             usedMetalFX = [self encodeMetalFXScalingFromTexture:sourceRGBTexture
                                                          engine:_activeEnhancementEngine
