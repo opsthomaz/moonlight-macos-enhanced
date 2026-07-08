@@ -161,11 +161,11 @@ final class StreamShortcutProfile: NSObject {
   ]
 
   private static let modifierDisplayOrder: [(NSEvent.ModifierFlags, String)] = [
-    (.control, "⌃"),
-    (.option, "⌥"),
-    (.shift, "⇧"),
-    (.command, "⌘"),
-    (.function, "fn"),
+    (.control, "Ctrl"),
+    (.option, "Opt"),
+    (.shift, "Shift"),
+    (.command, "Cmd"),
+    (.function, "Fn"),
   ]
 
   @objc static func relevantModifierFlags(_ flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
