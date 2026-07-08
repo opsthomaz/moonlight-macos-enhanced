@@ -2221,7 +2221,14 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
             break;
         case MLRequestedVideoRendererModeAuto:
         default:
-            candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
+            // On macOS 13+, prefer Enhanced (Metal) renderer for lower latency and
+            // direct texture presentation, bypassing WindowServer compositor overhead.
+            if (@available(macOS 13.0, *)) {
+                candidateModes[candidateCount++] = MLActiveVideoRendererModeEnhanced;
+                candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
+            } else {
+                candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
+            }
             candidateModes[candidateCount++] = MLActiveVideoRendererModeCompatibility;
             break;
     }
@@ -2441,14 +2448,26 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     if (_activeRendererMode == MLActiveVideoRendererModeEnhanced &&
         !_timingEnableVsync &&
         !_timingCompatibilityMode) {
-        target -= 1;
+        // On macOS 13, reducing pending frames too aggressively causes stutter
+        // due to drawable pipeline starvation. Keep at least 1 buffered frame.
+        if (@available(macOS 13.0, *)) {
+            target = MAX(target - 1, 1);
+        } else {
+            target -= 1;
+        }
     }
 
     if (displayRefreshRate > 0 && displayRefreshRate < (double)self.frameRate * 0.90) {
         if (_timingCompatibilityMode || _timingEnableVsync) {
             target = MAX(target, 1);
         } else {
-            target -= 1;
+            // On macOS 13+, keep at least 1 frame buffered when display refresh
+            // can't keep up with stream FPS to avoid empty queue stutter.
+            if (@available(macOS 13.0, *)) {
+                target = MAX(target - 1, 1);
+            } else {
+                target -= 1;
+            }
         }
     }
 
@@ -2460,10 +2479,21 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         LiGetMillis() < _enhancedStartupPacingUntilMs) {
         if (!_didLogEnhancedStartupPacing) {
             _didLogEnhancedStartupPacing = YES;
-            Log(LOG_I, @"[video] Enhanced startup pacing enabled: pending=0 window=%dms",
+            int startupTarget = 0;
+            if (@available(macOS 13.0, *)) {
+                startupTarget = 1;
+            }
+            Log(LOG_I, @"[video] Enhanced startup pacing enabled: pending=%d window=%dms",
+                startupTarget,
                 (int)kMLEnhancedStartupPacingWindowMs);
         }
-        target = 0;
+        // On macOS 13+, keep at least 1 pending frame during startup to avoid
+        // severe stutter from an empty frame queue.
+        if (@available(macOS 13.0, *)) {
+            target = MAX(target, 1);
+        } else {
+            target = 0;
+        }
     }
 
     return MLClampInt(target, 0, 3);
@@ -2487,6 +2517,12 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
 
     if (_enableHdr) {
         return MIN(drawableDepth, (NSUInteger)2);
+    }
+
+    // On macOS 13+, a minimum of 2 inflight buffers prevents GPU starvation
+    // and drawable unavailability stalls that manifest as frame stutter.
+    if (@available(macOS 13.0, *)) {
+        return 2;
     }
 
     return 1;
