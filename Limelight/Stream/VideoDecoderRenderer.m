@@ -4472,24 +4472,24 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
                 BOOL isFullRange = (pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
                                     pixelFormat == kCVPixelFormatType_444YpCbCr8BiPlanarFullRange);
                 struct {
-                    float3 offset; float _pad0;
-                    float3 scale; float _pad1;
-                    float3x3 matrix;
+                    simd_float3 offset; float _pad0;
+                    simd_float3 scale; float _pad1;
+                    simd_float3x3 matrix;
                 } fastParams;
                 if (isFullRange) {
                     // BT.601 full range
-                    fastParams.offset = (float3){0.0f, 128.0f/255.0f, 128.0f/255.0f};
-                    fastParams.scale = (float3){1.0f, 1.0f, 1.0f};
-                    fastParams.matrix = float3x3(float3(1.0f, 0.0f, 1.4020f),
-                                                 float3(1.0f, -0.3441f, -0.7141f),
-                                                 float3(1.0f, 1.7720f, 0.0f));
+                    fastParams.offset = (simd_float3){0.0f, 128.0f/255.0f, 128.0f/255.0f};
+                    fastParams.scale = (simd_float3){1.0f, 1.0f, 1.0f};
+                    fastParams.matrix = simd_matrix((simd_float3){1.0f, 0.0f, 1.4020f},
+                                                    (simd_float3){1.0f, -0.3441f, -0.7141f},
+                                                    (simd_float3){1.0f, 1.7720f, 0.0f});
                 } else {
                     // BT.601 limited range (most common for SDR streaming)
-                    fastParams.offset = (float3){16.0f/255.0f, 128.0f/255.0f, 128.0f/255.0f};
-                    fastParams.scale = (float3){1.1644f, 1.1644f, 1.1644f};
-                    fastParams.matrix = float3x3(float3(1.1644f, 0.0f, 1.5960f),
-                                                 float3(1.1644f, -0.3917f, -0.8129f),
-                                                 float3(1.1644f, 2.0172f, 0.0f));
+                    fastParams.offset = (simd_float3){16.0f/255.0f, 128.0f/255.0f, 128.0f/255.0f};
+                    fastParams.scale = (simd_float3){1.1644f, 1.1644f, 1.1644f};
+                    fastParams.matrix = simd_matrix((simd_float3){1.1644f, 0.0f, 1.5960f},
+                                                    (simd_float3){1.1644f, -0.3917f, -0.8129f},
+                                                    (simd_float3){1.1644f, 2.0172f, 0.0f});
                 }
                 [renderEncoder setFragmentBytes:&fastParams length:sizeof(fastParams) atIndex:0];
                 [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
