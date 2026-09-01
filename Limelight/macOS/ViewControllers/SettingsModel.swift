@@ -938,6 +938,12 @@ class SettingsModel: ObservableObject {
       saveSettings()
     }
   }
+  @Published var gamepadMouseModeLongPressMenu: Bool {
+    didSet {
+      guard !isLoading else { return }
+      saveSettings()
+    }
+  }
   @Published var mouseMode: String {
     didSet {
       guard !isLoading else { return }
@@ -1305,6 +1311,7 @@ class SettingsModel: ObservableObject {
     appArtworkHeight = Self.defaultAppArtworkHeight
     dimNonHoveredArtwork = Self.defaultDimNonHoveredArtwork
     gamepadMouseMode = Self.defaultGamepadMouseMode
+    gamepadMouseModeLongPressMenu = Self.defaultGamepadMouseModeLongPressMenu
     mouseMode = Self.defaultMouseMode
     selectedUpscalingMode = Self.upscalingModeTitle(for: Self.defaultUpscalingMode)
     selectedFrameInterpolationMode = Self.frameInterpolationModeSelection(

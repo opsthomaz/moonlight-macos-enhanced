@@ -409,6 +409,8 @@ extension SettingsModel {
       selectedTouchscreenMode = Self.getString(
         from: settings.touchscreenMode ?? Self.defaultTouchscreenMode, in: Self.touchscreenModes)
       gamepadMouseMode = settings.gamepadMouseMode ?? Self.defaultGamepadMouseMode
+      gamepadMouseModeLongPressMenu =
+        settings.gamepadMouseModeLongPressMenu ?? Self.defaultGamepadMouseModeLongPressMenu
       mouseMode = Self.getString(from: settings.mouseMode ?? (Self.defaultMouseMode == "game" ? 0 : 1), in: Self.mouseModes)
       selectedUpscalingMode = Self.upscalingModeTitle(
         for: settings.upscalingMode ?? Self.defaultUpscalingMode)
@@ -747,6 +749,7 @@ extension SettingsModel {
       reverseScrollDirection: reverseScrollDirection,
       touchscreenMode: touchscreenMode,
       gamepadMouseMode: gamepadMouseMode,
+      gamepadMouseModeLongPressMenu: gamepadMouseModeLongPressMenu,
       mouseMode: mouseModeVal,
       pointerSensitivity: pointerSensitivity,
       wheelScrollSpeed: wheelScrollSpeed,

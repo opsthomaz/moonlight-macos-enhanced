@@ -314,6 +314,8 @@
 
 "Gamepad Mouse Emulation (!)" = "手柄模拟鼠标";
 "Gamepad Mouse Hint" = "使用手柄模拟鼠标。右摇杆移动，A 键点击。";
+"Long-press Menu to Toggle Mouse Mode" = "长按 Menu 切换鼠标模式";
+"Long-press Menu Mouse Hint" = "长按 Menu 约 1 秒，在手柄模式和鼠标模式之间切换。";
 
 "Mouse Mode On" = "鼠标模式开启";
 "Mouse Mode Off" = "鼠标模式关闭";

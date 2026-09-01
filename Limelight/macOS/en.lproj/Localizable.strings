@@ -315,6 +315,8 @@
 
 "Gamepad Mouse Emulation (!)" = "Gamepad Mouse Emulation";
 "Gamepad Mouse Hint" = "Use the gamepad as a mouse. Right stick moves, A clicks.";
+"Long-press Menu to Toggle Mouse Mode" = "Long-press Menu to Toggle Mouse Mode";
+"Long-press Menu Mouse Hint" = "Hold Menu for 1 second to switch between controller and mouse mode.";
 
 "Mouse Mode On" = "Mouse Mode On";
 "Mouse Mode Off" = "Mouse Mode Off";

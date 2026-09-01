@@ -1956,8 +1956,13 @@ void myHIDDeviceRemovalCallback(void * _Nullable        context,
 
 
 - (void)updateButtonFlags:(int)flag state:(BOOL)set {
-    // Mouse Mode Toggle Logic (Long Press Start)
-    if (flag == PLAY_FLAG) {
+    // Mouse Mode Toggle Logic (Long Press Start). The HID path must honor the
+    // same per-host settings as ControllerSupport; otherwise disabling either
+    // mouse emulation or the Menu gesture still leaves long-press active.
+    if (flag == PLAY_FLAG &&
+        self.controllerDriver == 0 &&
+        [SettingsClass gamepadMouseModeFor:self.host.uuid] &&
+        [SettingsClass gamepadMouseModeLongPressMenuFor:self.host.uuid]) {
         if (set) {
             if (self.controller.startButtonDownTime == nil) {
                 self.controller.startButtonDownTime = [NSDate date];
