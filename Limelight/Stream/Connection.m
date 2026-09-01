@@ -74,7 +74,9 @@ static int MLResolvedDynamicRangeModeForPreference(BOOL hdrEnabled, int hdrTrans
             return DYNAMIC_RANGE_MODE_HLG;
         case 0:
         default:
-            return DYNAMIC_RANGE_MODE_HLG;
+            // HDR10/PQ is the interoperable default for game-streaming hosts.
+            // HLG remains available as an explicit preference.
+            return DYNAMIC_RANGE_MODE_HDR10_PQ;
     }
 }
 
