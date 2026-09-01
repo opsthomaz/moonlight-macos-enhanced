@@ -196,6 +196,7 @@ extension SettingsModel {
     appArtworkHeight = Self.defaultAppArtworkHeight
     dimNonHoveredArtwork = Self.defaultDimNonHoveredArtwork
     gamepadMouseMode = Self.defaultGamepadMouseMode
+    gamepadMouseModeLongPressMenu = Self.defaultGamepadMouseModeLongPressMenu
     mouseMode = Self.defaultMouseMode
     selectedUpscalingMode = Self.upscalingModeTitle(for: Self.defaultUpscalingMode)
     selectedFrameInterpolationMode = Self.frameInterpolationModeSelection(

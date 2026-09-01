@@ -942,6 +942,7 @@ class SettingsModel: ObservableObject {
     didSet {
       guard !isLoading else { return }
       saveSettings()
+      postMouseSettingsChanged("gamepadMouseModeLongPressMenu")
     }
   }
   @Published var mouseMode: String {
