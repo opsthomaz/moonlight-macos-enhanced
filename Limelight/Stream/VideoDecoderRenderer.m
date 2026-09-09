@@ -4078,7 +4078,8 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
 
     MTLRenderPassDescriptor *passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     passDescriptor.colorAttachments[0].texture = drawable.texture;
-    passDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    passDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
     passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 
     id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
@@ -4088,6 +4089,28 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
 
     [renderEncoder setRenderPipelineState:_blitRenderPipelineState];
     [renderEncoder setFragmentTexture:sourceTexture atIndex:0];
+    CGFloat sourceAspect = sourceTexture.height > 0
+        ? (CGFloat)sourceTexture.width / (CGFloat)sourceTexture.height
+        : 1.0;
+    CGFloat drawableAspect = drawable.texture.height > 0
+        ? (CGFloat)drawable.texture.width / (CGFloat)drawable.texture.height
+        : sourceAspect;
+    MTLViewport viewport = {
+        .originX = 0.0,
+        .originY = 0.0,
+        .width = (double)drawable.texture.width,
+        .height = (double)drawable.texture.height,
+        .znear = 0.0,
+        .zfar = 1.0,
+    };
+    if (sourceAspect > drawableAspect) {
+        viewport.height = (double)drawable.texture.width / sourceAspect;
+        viewport.originY = ((double)drawable.texture.height - viewport.height) * 0.5;
+    } else if (sourceAspect < drawableAspect) {
+        viewport.width = (double)drawable.texture.height * sourceAspect;
+        viewport.originX = ((double)drawable.texture.width - viewport.width) * 0.5;
+    }
+    [renderEncoder setViewport:viewport];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [renderEncoder endEncoding];
     return YES;
@@ -4112,11 +4135,29 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         MTLFXSpatialScalerColorProcessingMode colorMode =
             _enableHdr ? MTLFXSpatialScalerColorProcessingModeHDR : MTLFXSpatialScalerColorProcessingModePerceptual;
 
+        CGFloat sourceAspect = sourceTexture.height > 0
+            ? (CGFloat)sourceTexture.width / (CGFloat)sourceTexture.height
+            : 1.0;
+        CGFloat drawableAspect = drawable.texture.height > 0
+            ? (CGFloat)drawable.texture.width / (CGFloat)drawable.texture.height
+            : sourceAspect;
+        NSUInteger scalerOutputWidth = drawable.texture.width;
+        NSUInteger scalerOutputHeight = drawable.texture.height;
+        if (sourceAspect > drawableAspect) {
+            scalerOutputHeight = MAX((NSUInteger)1,
+                                     (NSUInteger)floor((CGFloat)drawable.texture.width / sourceAspect));
+        } else if (sourceAspect < drawableAspect) {
+            scalerOutputWidth = MAX((NSUInteger)1,
+                                    (NSUInteger)floor((CGFloat)drawable.texture.height * sourceAspect));
+        }
+        BOOL outputMatchesDrawable = scalerOutputWidth == drawable.texture.width &&
+                                      scalerOutputHeight == drawable.texture.height;
+
         if (_spatialScaler
             && ([_spatialScaler inputWidth] != sourceTexture.width
                 || [_spatialScaler inputHeight] != sourceTexture.height
-                || [_spatialScaler outputWidth] != drawable.texture.width
-                || [_spatialScaler outputHeight] != drawable.texture.height
+                || [_spatialScaler outputWidth] != scalerOutputWidth
+                || [_spatialScaler outputHeight] != scalerOutputHeight
                 || [_spatialScaler colorTextureFormat] != sourceTexture.pixelFormat
                 || [_spatialScaler outputTextureFormat] != view.colorPixelFormat
                 || [_spatialScaler colorProcessingMode] != colorMode)) {
@@ -4127,8 +4168,8 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
             MTLFXSpatialScalerDescriptor *scalerDesc = [[MTLFXSpatialScalerDescriptor alloc] init];
             scalerDesc.inputWidth = sourceTexture.width;
             scalerDesc.inputHeight = sourceTexture.height;
-            scalerDesc.outputWidth = drawable.texture.width;
-            scalerDesc.outputHeight = drawable.texture.height;
+            scalerDesc.outputWidth = scalerOutputWidth;
+            scalerDesc.outputHeight = scalerOutputHeight;
             scalerDesc.colorTextureFormat = sourceTexture.pixelFormat;
             scalerDesc.outputTextureFormat = view.colorPixelFormat;
             scalerDesc.colorProcessingMode = colorMode;
@@ -4140,14 +4181,14 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         }
 
         id<MTLTexture> targetTexture = drawable.texture;
-        if (drawable.texture.storageMode != MTLStorageModePrivate) {
-            if (!_upscaledTexture || _upscaledTexture.width != drawable.texture.width
-                || _upscaledTexture.height != drawable.texture.height
+        if (!outputMatchesDrawable || drawable.texture.storageMode != MTLStorageModePrivate) {
+            if (!_upscaledTexture || _upscaledTexture.width != scalerOutputWidth
+                || _upscaledTexture.height != scalerOutputHeight
                 || _upscaledTexture.pixelFormat != drawable.texture.pixelFormat) {
                 MTLTextureDescriptor *upscaledDesc =
                     [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawable.texture.pixelFormat
-                                                                      width:drawable.texture.width
-                                                                     height:drawable.texture.height
+                                                                      width:scalerOutputWidth
+                                                                     height:scalerOutputHeight
                                                                   mipmapped:NO];
                 upscaledDesc.storageMode = MTLStorageModePrivate;
                 upscaledDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
