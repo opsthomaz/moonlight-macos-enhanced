@@ -886,8 +886,7 @@
 }
 
 - (NSString *)currentLatencyLogSummary {
-    PML_CONTROL_STREAM_CONTEXT controlCtx = self.streamMan.connection ? (PML_CONTROL_STREAM_CONTEXT)[self.streamMan.connection controlStreamContext] : NULL;
-    NSString *controlSummary = MLRttLogSummary(controlCtx);
+    NSString *controlSummary = MLRttLogSummary(self.streamMan.connection);
     if (![controlSummary isEqualToString:@"n/a"]) {
         return controlSummary;
     }
@@ -908,8 +907,7 @@
     if ([self hasReceivedAnyVideoFrames]) {
         uint32_t rtt = 0;
         uint32_t rttVar = 0;
-        PML_CONTROL_STREAM_CONTEXT controlCtx = self.streamMan.connection ? (PML_CONTROL_STREAM_CONTEXT)[self.streamMan.connection controlStreamContext] : NULL;
-        if (MLGetUsableRttInfo(controlCtx, &rtt, &rttVar)) {
+        if (MLGetUsableRttInfo(self.streamMan.connection, &rtt, &rttVar)) {
             return (NSInteger)MAX((uint32_t)1, rtt);
         }
     }

@@ -57,8 +57,8 @@ typedef struct {
 - (id)initWithConfig:(StreamConfiguration *)config
                renderer:(VideoDecoderRenderer *)myRenderer
     connectionCallbacks:(id<ConnectionCallbacks>)callbacks;
-- (void *)inputStreamContext;
-- (void *)controlStreamContext;
+/// Returns NO until the control stream has an RTT estimate.
+- (BOOL)getEstimatedRtt:(uint32_t *)rttMs variance:(uint32_t *)varianceMs;
 - (BOOL)isClipboardControlReady;
 - (NSString *)clipboardControlReadinessReason;
 - (uint32_t)clipboardHostFeatureFlags;

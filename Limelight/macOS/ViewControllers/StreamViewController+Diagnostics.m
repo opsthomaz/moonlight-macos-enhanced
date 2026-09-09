@@ -2538,8 +2538,7 @@
     BOOL rttAvailable = NO;
     BOOL usingPathProbeLatency = NO;
     NSInteger pathProbeMs = -1;
-    PML_CONTROL_STREAM_CONTEXT controlCtx = self.streamMan.connection ? (PML_CONTROL_STREAM_CONTEXT)[self.streamMan.connection controlStreamContext] : NULL;
-    rttAvailable = MLGetUsableRttInfo(controlCtx, &rtt, NULL);
+    rttAvailable = MLGetUsableRttInfo(self.streamMan.connection, &rtt, NULL);
     if (!rttAvailable) {
         NSString *preferredAddr = [self currentPreferredAddressForStatus];
         NSNumber *latency = preferredAddr ? self.app.host.addressLatencies[preferredAddr] : nil;

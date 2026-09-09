@@ -2635,12 +2635,19 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     return self;
 }
 
-- (void *)inputStreamContext {
-    return LiGetInputContextFromConnectionCtx(&_connectionContext);
-}
-
-- (void *)controlStreamContext {
-    return &_connectionContext.controlContext;
+- (BOOL)getEstimatedRtt:(uint32_t *)rttMs variance:(uint32_t *)varianceMs {
+    uint32_t rtt = 0;
+    uint32_t variance = 0;
+    if (!LiGetEstimatedRttInfo(&rtt, &variance)) {
+        return NO;
+    }
+    if (rttMs != NULL) {
+        *rttMs = rtt;
+    }
+    if (varianceMs != NULL) {
+        *varianceMs = variance;
+    }
+    return YES;
 }
 
 - (BOOL)isClipboardControlReady {
