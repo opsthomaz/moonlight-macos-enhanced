@@ -10,6 +10,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  unit_tests:
+    name: Unit tests
+    runs-on: macos-26
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest
+
+    - name: Run core tests
+      run: swift test 2>&1 | tail -20
+
   build_arm64:
     name: Build arm64
     runs-on: macos-26
@@ -125,14 +141,20 @@ jobs:
 
   build:
     name: build
-    needs: [build_arm64]
+    needs: [unit_tests, build_arm64]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
     - name: Verify required build jobs
       run: |
+        echo "unit_tests result: ${{ needs.unit_tests.result }}"
         echo "build_arm64 result: ${{ needs.build_arm64.result }}"
+
+        if [ "${{ needs.unit_tests.result }}" != "success" ]; then
+          echo "unit_tests did not succeed"
+          exit 1
+        fi
 
         if [ "${{ needs.build_arm64.result }}" != "success" ]; then
           echo "build_arm64 did not succeed"

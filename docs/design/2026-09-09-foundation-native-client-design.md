@@ -225,6 +225,18 @@ anything is committed.
    input works in both mouse modes, clipboard text and image sync both ways,
    microphone reaches the host, HDR negotiates, and the client builds with
    zero references to `Limelight-internal.h`.
+   Delivered 2026-09-09 on branch `phase2/protocol-port`. Verified against the
+   owner's Foundation Sunshine host: stream, both mouse modes, keyboard, trackpad
+   scroll, clipboard text in both directions, reconnect. Not yet verified:
+   clipboard images, 7.1.4 audio, microphone, HDR, gamepad. Deviations from
+   this design: the bridge is the `Connection` class itself plus categories
+   (`Connection+Audio/Surround/Microphone/Clipboard/Cursor.m`) rather than a
+   separate `MLProtocolBridge` file, because nothing was left to wrap once the
+   `*Ctx` layer was gone; the iOS leftovers under `Limelight/Input` stay until
+   phase 4 because their headers still declare types the macOS code uses.
+   Known follow-up: a clipboard change is occasionally sent twice because macOS
+   bumps the pasteboard change count more than once; adopt the reference
+   client's 16-entry echo cache.
 3. **Issues.** Triage the 20 upstream issues into fixed / reproduced /
    cannot reproduce / won't do, then fix in order of user impact: locked-mouse
    stuck (24), Cmd+Tab focus steal (40), sticky modifiers (37), hover
@@ -274,3 +286,13 @@ picks a name early; it is independent of the protocol work.
 - Folder mapping / host file access (Qt has it via a FileProvider bridge).
 - Sunshine ABR client feedback loop.
 - Notarized builds (needs a paid Apple Developer account).
+- Dynamic SDR reference white (`LiSendClientSdrWhiteNits`): macOS exposes EDR
+  headroom but no SDR-white-in-nits query; needs research before it can feed
+  the 1 Hz loop the Windows client runs.
+- Dynamic HDR capabilities (HDR10+, Dolby Vision 8.1/8.4): the Metal renderer
+  has no path for them yet; the client keeps advertising none.
+- DualSense haptics (IR v2 frames) through GameController haptics.
+- Native trackpad events (`LiSendTouchpadEvent`).
+- Remote text context: nothing to do on macOS beyond registering the callback,
+  which also opts the client in server-side; left unregistered for now.
+- Retina scaling of host cursor shapes (currently shown at host pixel size).
