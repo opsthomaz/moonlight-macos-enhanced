@@ -200,6 +200,7 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
     char _controllerNumbers;
     bool _multiController;
     BOOL _gamepadMouseModeEnabled;
+    BOOL _gamepadMouseModeLongPressMenuEnabled;
     bool _isMouseModeActive;
     NSDate *_startPressTime;
     float _accumulatedMouseX;
@@ -817,6 +818,7 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
     _controllerNumbers = 0;
     _multiController = streamConfig.multiController;
     _gamepadMouseModeEnabled = streamConfig.gamepadMouseMode;
+    _gamepadMouseModeLongPressMenuEnabled = streamConfig.gamepadMouseModeLongPressMenu;
     _presenceDelegate = delegate;
 
     _debouncers = [[NSMutableDictionary alloc] init];
@@ -1035,11 +1037,11 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
             }
         }
         
-        if (startPressed) {
+        if (_gamepadMouseModeLongPressMenuEnabled && startPressed) {
             if (controller.startButtonDownTime == nil) {
                 controller.startButtonDownTime = [NSDate date];
             }
-        } else {
+        } else if (_gamepadMouseModeLongPressMenuEnabled) {
             // Start released
             if (controller.startButtonDownTime != nil) {
                 // Check if it was held long enough
