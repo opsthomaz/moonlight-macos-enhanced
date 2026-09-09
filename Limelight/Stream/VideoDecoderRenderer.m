@@ -4768,7 +4768,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
         }
 
         uint64_t decodeStart = LiGetMillis();
-        int ret = DrSubmitDecodeUnit(du);
+        int ret = [self submitDecodeUnit:du];
         LiCompleteVideoFrame(handle, ret);
 
         if (ret == DR_OK) {
