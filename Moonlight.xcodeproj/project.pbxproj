@@ -75,6 +75,7 @@
 				Crypto/IdManager.m,
 				Crypto/mkcert.c,
 				Core/MLClipboardFrame.m,
+				Core/MLHdrMode.m,
 				Core/MLScrollTrace.m,
 				Database/DataManager.m,
 				Database/TemporaryApp.m,
