@@ -14,6 +14,10 @@
 @property (nonatomic, strong) NSString *appName;
 @property (nonatomic, weak) id<KeyboardNotifiableDelegate> keyboardNotifiable;
 @property (nonatomic) BOOL prefersHiddenLocalCursor;
+/// Cursor shape received from the host; shown instead of the arrow while the local cursor is visible.
+@property (nonatomic, strong, nullable) NSCursor *hostCursor;
+/// YES when the host reports its cursor as hidden.
+@property (nonatomic) BOOL hostCursorHidden;
 
 - (void)refreshPreferredLocalCursor;
 

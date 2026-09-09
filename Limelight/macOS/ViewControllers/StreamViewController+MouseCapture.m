@@ -2935,6 +2935,8 @@ static inline NSPoint MLClampFreeMousePointToExitEdge(NSPoint point,
 
     self.streamView.prefersHiddenLocalCursor = !showLocalCursor;
     [self.streamView refreshPreferredLocalCursor];
+    // With a visible local cursor the host stops drawing its own and sends shapes instead.
+    [self.streamMan.connection setLocalCursorRendering:showLocalCursor];
 
     // Hide system cursor in both game mode and remote desktop mode (unless showLocalCursor is enabled)
     if (!showLocalCursor) {
@@ -3020,6 +3022,10 @@ static inline NSPoint MLClampFreeMousePointToExitEdge(NSPoint point,
     self.pendingMouseUncaptureAfterButtonsReleased = NO;
     self.pendingMouseUncaptureRecheckScheduled = NO;
     self.hasCoreHIDFreeMouseLastTruthPoint = NO;
+
+    [self.streamMan.connection setLocalCursorRendering:NO];
+    self.streamView.hostCursor = nil;
+    self.streamView.hostCursorHidden = NO;
 
     if (!showLocalCursor) {
         CGAssociateMouseAndMouseCursorPosition(YES);

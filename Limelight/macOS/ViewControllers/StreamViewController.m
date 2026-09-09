@@ -172,6 +172,14 @@ highFreqMotor:(unsigned short)highFreqMotor {
     }];
 }
 
+- (void)hostCursorUpdated:(NSCursor *)cursor visible:(BOOL)visible {
+    [self forwardIfCurrentNamed:@"hostCursorUpdated" block:^(id<MLStreamScopedCallbackOwner> owner) {
+        if ([owner respondsToSelector:@selector(hostCursorUpdated:visible:)]) {
+            [owner hostCursorUpdated:cursor visible:visible];
+        }
+    }];
+}
+
 @end
 
 @implementation StreamViewController
@@ -2049,6 +2057,13 @@ highFreqMotor:(unsigned short)highFreqMotor {
     self.clipboardLastChangeCount = pasteboard.changeCount;
     self.clipboardHasPendingEchoSuppressionHash = suppressionHash != 0;
     self.clipboardPendingEchoSuppressionHash = suppressionHash;
+}
+
+- (void)hostCursorUpdated:(NSCursor *)cursor visible:(BOOL)visible {
+    if (cursor != nil) {
+        self.streamView.hostCursor = cursor;
+    }
+    self.streamView.hostCursorHidden = !visible;
 }
 
 - (void)clipboardFrameReceived:(MLClipboardFrame *)frame {

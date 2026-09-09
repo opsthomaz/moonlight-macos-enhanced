@@ -16,8 +16,8 @@
 @implementation StreamViewMac
 
 - (NSCursor *)preferredLocalCursor {
-    if (!self.prefersHiddenLocalCursor) {
-        return [NSCursor arrowCursor];
+    if (!self.prefersHiddenLocalCursor && !self.hostCursorHidden) {
+        return self.hostCursor ?: [NSCursor arrowCursor];
     }
 
     static NSCursor *hiddenCursor;
@@ -61,6 +61,19 @@
     }
 
     _prefersHiddenLocalCursor = prefersHiddenLocalCursor;
+    [self refreshPreferredLocalCursor];
+}
+
+- (void)setHostCursor:(NSCursor *)hostCursor {
+    _hostCursor = hostCursor;
+    [self refreshPreferredLocalCursor];
+}
+
+- (void)setHostCursorHidden:(BOOL)hostCursorHidden {
+    if (_hostCursorHidden == hostCursorHidden) {
+        return;
+    }
+    _hostCursorHidden = hostCursorHidden;
     [self refreshPreferredLocalCursor];
 }
 

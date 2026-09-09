@@ -184,6 +184,7 @@
 				Stream/Connection.m,
 				"Stream/Connection+Audio.m",
 				"Stream/Connection+Clipboard.m",
+				"Stream/Connection+Cursor.m",
 				"Stream/Connection+Microphone.m",
 				"Stream/Connection+Surround.m",
 				Stream/RendererLayerContainer.m,

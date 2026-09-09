@@ -662,6 +662,7 @@ void ClConnectionStatusUpdate(int status)
     _clCallbacks.rumble = ClRumble;
     _clCallbacks.connectionStatusUpdate = ClConnectionStatusUpdate;
     _clCallbacks.clipboardData = ClClipboardData;
+    _clCallbacks.cursorUpdate = ClCursorUpdate;
 
     return self;
 }

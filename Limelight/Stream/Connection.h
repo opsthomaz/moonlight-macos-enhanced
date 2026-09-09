@@ -27,6 +27,9 @@
 @optional
 /// Delivered on the main queue for every clipboard frame the host sends.
 - (void)clipboardFrameReceived:(MLClipboardFrame *)frame;
+/// Delivered on the main queue when the host cursor changes shape or visibility.
+/// `cursor` is nil when only visibility changed.
+- (void)hostCursorUpdated:(NSCursor *)cursor visible:(BOOL)visible;
 
 @end
 
@@ -62,6 +65,9 @@ typedef struct {
 - (BOOL)sendClipboardFrame:(MLClipboardFrame *)frame;
 /// Feature bits advertised by the host (LI_FF_*). Valid after connectionStarted.
 - (uint32_t)hostFeatureFlags;
+/// Asks the host to stop drawing its cursor into the video and send shapes instead
+/// (YES), or to draw it again (NO). Returns NO when the host lacks the capability.
+- (BOOL)setLocalCursorRendering:(BOOL)enabled;
 /// Fills transport counters for diagnostics. Returns NO when no snapshot is available.
 - (BOOL)getVideoDiagnosticSnapshot:(MLVideoDiagnosticSnapshot *)snapshot;
 - (void)terminate;

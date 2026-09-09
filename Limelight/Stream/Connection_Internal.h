@@ -182,3 +182,6 @@ void MLPrepareOpusDecoderConfig(const OPUS_MULTISTREAM_CONFIGURATION *sourceConf
 
 // Clipboard listener callback (Connection+Clipboard.m)
 void ClClipboardData(const char* data, int length);
+
+// Cursor listener callback (Connection+Cursor.m)
+void ClCursorUpdate(const LI_CURSOR_UPDATE* update);
