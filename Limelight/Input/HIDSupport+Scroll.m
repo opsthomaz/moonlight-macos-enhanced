@@ -6,6 +6,7 @@
 //  Copyright © 2017 Moonlight Stream. All rights reserved.
 //
 #import "HIDSupport_Internal.h"
+#import "MLScrollTrace.h"
 
 static uint64_t const HIDGCMouseScrollDuplicateSuppressMs = 45;
 
@@ -144,12 +145,7 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
         dispatchedAmount = clicks > 0 ? 1 : -1;
     }
 
-    LiNoteScrollTraceLocalDispatchCtx(inputCtx,
-                                      traceId,
-                                      nowMs,
-                                      dispatchedAmount,
-                                      false,
-                                      false);
+    MLScrollTraceNoteDispatch(dispatchedAmount, NO, NO, nowMs);
     LiSendHighResScrollEventCtx(inputCtx, dispatchedAmount);
     [SettingsClass updateScrollInputRuntimeStatusFor:self.host.uuid
                                           summaryKey:@"Scroll Runtime Path GameController"
@@ -465,12 +461,7 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
         short dispatchAmount = dispatchHorizontal ? dispatchedDeltaX : dispatchedDeltaY;
         BOOL dispatchHighRes = highResolutionPath && !quantizedWheel;
         if (dispatchAmount != 0) {
-            LiNoteScrollTraceLocalDispatchCtx(inputCtx,
-                                              traceId,
-                                              LiGetMillis(),
-                                              dispatchAmount,
-                                              dispatchHighRes,
-                                              dispatchHorizontal);
+            MLScrollTraceNoteDispatch(dispatchAmount, dispatchHorizontal, dispatchHighRes, LiGetMillis());
         }
         if (dispatchedDeltaX != 0) {
             LiSendHighResHScrollEventCtx(inputCtx, dispatchedDeltaX);

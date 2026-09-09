@@ -6,6 +6,7 @@
 //  Copyright © 2017 Moonlight Stream. All rights reserved.
 //
 #import "HIDSupport_Internal.h"
+#import "MLScrollTrace.h"
 
 #import <IOKit/hid/IOHIDElement.h>
 
@@ -355,24 +356,20 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
 
 @implementation HIDSupport
 
-- (void)setInputContext:(void *)inputContext {
-    _inputContext = inputContext;
-    [self syncScrollTraceDiagnosticsPreferenceToInputContext];
-}
-
 - (void)refreshInputDiagnosticsPreference {
     self.inputDiagnosticsEnabled = [SettingsClass inputDiagnosticsEnabled];
-    [self syncScrollTraceDiagnosticsPreferenceToInputContext];
+    MLScrollTraceSetEnabled(self.inputDiagnosticsEnabled);
 }
 
 - (void)resetInputDiagnostics {
     [self refreshInputDiagnosticsPreference];
+    MLScrollTraceReset();
+    MLScrollTraceSetEnabled(self.inputDiagnosticsEnabled);
 
     @synchronized (self.inputDiagnosticsLock) {
         self.inputDiagnosticsDetailedLogSequence = 0;
         self.inputDiagnosticsRemainingDetailedLogs = self.inputDiagnosticsEnabled ? 24 : 0;
         self.inputDiagnosticsRemainingScrollDetailedLogs = self.inputDiagnosticsEnabled ? 256 : 0;
-        self.scrollTraceSequence = 0;
         self.activeScrollTraceId = 0;
         self.activeScrollTraceStartedMs = 0;
         self.activeScrollTraceLastEventMs = 0;
@@ -446,9 +443,15 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
     return shouldLog;
 }
 
-- (void)syncScrollTraceDiagnosticsPreferenceToInputContext {
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    LiSetScrollTraceDiagnosticsEnabledCtx(inputCtx, self.inputDiagnosticsEnabled ? true : false);
+/// Maps the string source names used by the scroll paths to the trace source enum.
+static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
+    if ([source isEqualToString:@"gcmouse"]) {
+        return MLScrollTraceSourceGameControllerMouse;
+    }
+    if ([source isEqualToString:@"appkit"]) {
+        return MLScrollTraceSourceAppKit;
+    }
+    return MLScrollTraceSourceNone;
 }
 
 - (uint64_t)prepareScrollTraceFromSource:(NSString *)source
@@ -457,7 +460,6 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
                                    phase:(NSEventPhase)phase
                            momentumPhase:(NSEventPhase)momentumPhase
                         hasPreciseDeltas:(BOOL)hasPreciseDeltas {
-    [self syncScrollTraceDiagnosticsPreferenceToInputContext];
     if (!self.inputDiagnosticsEnabled) {
         return 0;
     }
@@ -476,11 +478,7 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
                              (self.activeScrollTraceSource != nil && source != nil &&
                               ![self.activeScrollTraceSource isEqualToString:source]);
         if (self.activeScrollTraceId == 0 || explicitBegin || idleExpired || sourceChanged) {
-            self.scrollTraceSequence += 1;
-            if (self.scrollTraceSequence == 0) {
-                self.scrollTraceSequence = 1;
-            }
-            self.activeScrollTraceId = self.scrollTraceSequence;
+            self.activeScrollTraceId = MLScrollTraceBegin(MLScrollTraceSourceFromName(source), nowMs);
             self.activeScrollTraceStartedMs = nowMs;
             self.activeScrollTraceLockedToPrecise = NO;
             self.activeScrollTraceSource = [source copy];
@@ -493,9 +491,7 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
         traceId = self.activeScrollTraceId;
     }
 
-    if (startsNewTrace) {
-        PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-        LiStartScrollTraceCtx(inputCtx, traceId, nowMs);
+    if (startsNewTrace && traceId != 0) {
         Log(LOG_D, @"[inputdiag] scroll-trace start trace=%llu source=%@ raw=(%.3f,%.3f) phase=%lu momentum=%lu precise=%d",
             (unsigned long long)traceId,
             source ?: @"unknown",
@@ -662,7 +658,6 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
     }
 
     uint64_t nowMs = LiGetMillis();
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
 
     NSUInteger sequence = 0;
     BOOL shouldLog = NO;
@@ -676,7 +671,7 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
     }
 
     if (shouldLog) {
-        uint64_t traceStartMs = LiGetScrollTraceStartMsCtx(inputCtx);
+        uint64_t traceStartMs = MLScrollTraceCurrent().startedMs;
         uint64_t traceAgeMs = traceStartMs != 0 && nowMs >= traceStartMs ? nowMs - traceStartMs : 0;
         Log(LOG_D, @"[inputdiag] #%lu scroll trace=%llu ageMs=%llu mode=%@ raw=(%.3f,%.3f) rawWheel=(%ld,%ld) normalized=(%.3f,%.3f) dispatched=(%d,%d) continuous=%d precise=%d line=(%ld,%ld) point=(%ld,%ld) fixedRaw=(%ld,%ld) phase=%lu momentum=%lu ctx=%p",
             (unsigned long)sequence,

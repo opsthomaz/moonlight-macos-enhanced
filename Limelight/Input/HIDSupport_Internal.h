@@ -93,7 +93,6 @@
 @property (nonatomic) NSUInteger inputDiagnosticsDetailedLogSequence;
 @property (nonatomic) NSUInteger inputDiagnosticsRemainingDetailedLogs;
 @property (nonatomic) NSUInteger inputDiagnosticsRemainingScrollDetailedLogs;
-@property (nonatomic) uint64_t scrollTraceSequence;
 @property (nonatomic) uint64_t activeScrollTraceId;
 @property (nonatomic) uint64_t activeScrollTraceStartedMs;
 @property (nonatomic) uint64_t activeScrollTraceLastEventMs;
@@ -152,7 +151,6 @@
 - (void)setupHidManager;
 - (void)tearDownHidManagerOnMainThread;
 - (BOOL)reserveDetailedInputDiagnosticsLogSequence:(NSUInteger *)sequence;
-- (void)syncScrollTraceDiagnosticsPreferenceToInputContext;
 - (uint64_t)prepareScrollTraceFromSource:(NSString *)source
                                rawDeltaX:(CGFloat)rawDeltaX
                                rawDeltaY:(CGFloat)rawDeltaY

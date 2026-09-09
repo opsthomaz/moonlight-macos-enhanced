@@ -13,19 +13,19 @@
 }
 
 - (void)testBeginAssignsIncreasingIdsAndRecordsSource {
-    uint64_t a = MLScrollTraceBegin(MLScrollTraceSourceTrackpad, 1000);
-    uint64_t b = MLScrollTraceBegin(MLScrollTraceSourcePhysicalWheel, 1010);
+    uint64_t a = MLScrollTraceBegin(MLScrollTraceSourceAppKit, 1000);
+    uint64_t b = MLScrollTraceBegin(MLScrollTraceSourceGameControllerMouse, 1010);
     XCTAssertGreaterThan(a, 0ULL);
     XCTAssertGreaterThan(b, a);
     MLScrollTraceSnapshot s = MLScrollTraceCurrent();
     XCTAssertEqual(s.traceId, b);
-    XCTAssertEqual(s.source, MLScrollTraceSourcePhysicalWheel);
+    XCTAssertEqual(s.source, MLScrollTraceSourceGameControllerMouse);
     XCTAssertEqual(s.startedMs, 1010ULL);
     XCTAssertFalse(s.awaitingRender);
 }
 
 - (void)testDispatchMarksAwaitingRenderAndCompleteClearsIt {
-    MLScrollTraceBegin(MLScrollTraceSourceSmoothWheel, 5);
+    MLScrollTraceBegin(MLScrollTraceSourceAppKit, 5);
     MLScrollTraceNoteDispatch(-120, NO, YES, 7);
     XCTAssertTrue(MLScrollTraceIsAwaitingRender());
     MLScrollTraceSnapshot s = MLScrollTraceCompleteRender(20);
@@ -39,7 +39,7 @@
 
 - (void)testDisabledRecordsNothing {
     MLScrollTraceSetEnabled(NO);
-    XCTAssertEqual(MLScrollTraceBegin(MLScrollTraceSourceTrackpad, 1), 0ULL);
+    XCTAssertEqual(MLScrollTraceBegin(MLScrollTraceSourceAppKit, 1), 0ULL);
     MLScrollTraceNoteDispatch(10, YES, NO, 2);
     XCTAssertFalse(MLScrollTraceIsAwaitingRender());
     XCTAssertEqual(MLScrollTraceCurrent().traceId, 0ULL);
@@ -51,10 +51,10 @@
 }
 
 - (void)testResetRestartsIds {
-    MLScrollTraceBegin(MLScrollTraceSourceTrackpad, 1);
+    MLScrollTraceBegin(MLScrollTraceSourceAppKit, 1);
     MLScrollTraceReset();
     MLScrollTraceSetEnabled(YES);
-    XCTAssertEqual(MLScrollTraceBegin(MLScrollTraceSourceTrackpad, 2), 1ULL);
+    XCTAssertEqual(MLScrollTraceBegin(MLScrollTraceSourceAppKit, 2), 1ULL);
 }
 
 @end

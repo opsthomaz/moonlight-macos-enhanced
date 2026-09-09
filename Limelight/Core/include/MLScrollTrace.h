@@ -5,9 +5,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Where a scroll gesture came from. Mirrors the client's wheel routing.
 typedef NS_ENUM(NSInteger, MLScrollTraceSource) {
     MLScrollTraceSourceNone = 0,
-    MLScrollTraceSourcePhysicalWheel,
-    MLScrollTraceSourceSmoothWheel,
-    MLScrollTraceSourceTrackpad,
+    /// Wheel events delivered through GameController's GCMouse.
+    MLScrollTraceSourceGameControllerMouse,
+    /// Wheel and trackpad events delivered through AppKit's scrollWheel:.
+    MLScrollTraceSourceAppKit,
 };
 
 /// Point-in-time copy of the active scroll trace. Safe to read after the call returns.
