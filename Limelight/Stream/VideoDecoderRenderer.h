@@ -48,7 +48,8 @@ typedef struct {
 
 @interface VideoDecoderRenderer : NSObject
 
-@property(nonatomic, assign) void *depacketizerContext;
+/// YES while the connection's video stream is running; the display link pulls frames only then.
+@property(atomic, assign) BOOL frameSourceReady;
 
 @property(nonatomic, readonly) VideoStats videoStats;
 @property(nonatomic, readonly) int videoFormat;

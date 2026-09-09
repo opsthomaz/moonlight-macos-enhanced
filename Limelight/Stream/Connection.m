@@ -669,6 +669,7 @@ void DrStart(void)
     Connection *conn = CurrentConnection();
     if (conn != nil) {
         VideoDecoderRenderer *renderer = ConnectionGetRendererSnapshot(conn);
+        renderer.frameSourceReady = YES;
         [renderer start];
     }
 }
@@ -678,6 +679,7 @@ void DrStop(void)
     Connection *conn = CurrentConnection();
     if (conn != nil) {
         VideoDecoderRenderer *renderer = ConnectionGetRendererSnapshot(conn);
+        renderer.frameSourceReady = NO;
         [renderer stop];
         ConnectionClearRuntimeTargets(conn);
     }
@@ -2371,11 +2373,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     _connectionContext.inputContext.inputSock = INVALID_SOCKET;
     _connectionContext.micContext.micSocket = INVALID_SOCKET;
     RegisterConnection(&_connectionContext, self);
-    VideoDecoderRenderer *renderer = ConnectionGetRendererSnapshot(self);
-    if (renderer) {
-        renderer.depacketizerContext = &_connectionContext.videoContext.depacketizerContext;
-    }
-
     LiInitializeStreamConfiguration(&_streamConfig);
     _streamConfig.width = config.width;
     _streamConfig.height = config.height;

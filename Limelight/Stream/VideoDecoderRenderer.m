@@ -7,7 +7,7 @@
 //
 
 #import "VideoDecoderRenderer.h"
-#include "Limelight-internal.h"
+#include "Limelight.h"
 #import "MLScrollTrace.h"
 #import "RendererLayerContainer.h"
 
@@ -4664,12 +4664,8 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
                                           void *displayLinkContext)
 {
     VideoDecoderRenderer *self = (__bridge VideoDecoderRenderer *)displayLinkContext;
-    PML_DEPACKETIZER_CONTEXT depacketizerCtx = (PML_DEPACKETIZER_CONTEXT)self.depacketizerContext;
-    if (depacketizerCtx == NULL) {
+    if (!self.frameSourceReady) {
         return kCVReturnSuccess;
-    }
-    if (depacketizerCtx->connectionContext != NULL) {
-        LiSetThreadConnectionContext(depacketizerCtx->connectionContext);
     }
 
     VIDEO_FRAME_HANDLE handle;
@@ -4699,7 +4695,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
             self.frameRate);
     }
 
-    while (LiPollNextVideoFrameCtx(depacketizerCtx, &handle, &du)) {
+    while (LiPollNextVideoFrame(&handle, &du)) {
         dequeuedAny = YES;
 
         // Cache fields before LiCompleteVideoFrame() frees the decode unit.
@@ -4713,7 +4709,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
             Log(LOG_D, @"[diag] Pull renderer dequeued frame=%d len=%d pending=%d enqueueAge=%llums",
                 du->frameNumber,
                 fullLengthBytes,
-                LiGetPendingVideoFramesCtx(depacketizerCtx),
+                LiGetPendingVideoFrames(),
                 (unsigned long long)(enqueueTimeMs != 0 && nowMs >= enqueueTimeMs ? nowMs - enqueueTimeMs : 0));
             self->_remainingDequeuedFrameLogCount -= 1;
         }
@@ -4773,7 +4769,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
 
         uint64_t decodeStart = LiGetMillis();
         int ret = DrSubmitDecodeUnit(du);
-        LiCompleteVideoFrameCtx(depacketizerCtx, handle, ret);
+        LiCompleteVideoFrame(handle, ret);
 
         if (ret == DR_OK) {
             uint64_t renderSampleNowMs = LiGetMillis();
@@ -4797,7 +4793,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
                         du->frameNumber,
                         startAgeMs,
                         localAgeMs,
-                        LiGetPendingVideoFramesCtx(depacketizerCtx));
+                        LiGetPendingVideoFrames());
                 }
             }
         }
@@ -4809,7 +4805,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
         snapshotStats.lastUpdatedTimestamp = LiGetMillis();
         self->_videoStats = snapshotStats;
 
-        int pendingFrames = LiGetPendingVideoFramesCtx(depacketizerCtx);
+        int pendingFrames = LiGetPendingVideoFrames();
         if (pendingFrames <= desiredPendingFrames) {
             break;
         }
@@ -4822,7 +4818,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
             self->_lastIdleLogMs = LiGetMillis();
             Log(LOG_W, @"[diag] Pull renderer idle for %llums pending=%d",
                 (unsigned long long)idleMs,
-                LiGetPendingVideoFramesCtx(depacketizerCtx));
+                LiGetPendingVideoFrames());
         }
     }
 
