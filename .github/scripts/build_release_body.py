@@ -12,9 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 NOTES_DIR = REPO_ROOT / ".github" / "release-notes"
 OUTPUT_PATH = REPO_ROOT / "release_body.md"
 DOWNLOAD_VARIANTS = [
-    ("Moonlight-macOS-Enhanced-universal.dmg", "Apple Silicon + Intel (universal, recommended if unsure)"),
     ("Moonlight-macOS-Enhanced-arm64.dmg", "Apple Silicon (arm64)"),
-    ("Moonlight-macOS-Enhanced-x86_64.dmg", "Intel Mac (x86_64)"),
 ]
 
 TYPE_TO_ZH = {
@@ -162,8 +160,8 @@ def build_body(version: str) -> str:
     lines.extend([
         "",
         "### First Launch | 首次启动",
-        f"1. 如果你不确定三者的区别，默认推荐下载 `{DOWNLOAD_VARIANTS[0][0]}`；如果你清楚自己的机型，再按需选择 `arm64` 或 `x86_64`。",
-        f"   If you are not sure which variant to use, start with `{DOWNLOAD_VARIANTS[0][0]}`. If you know your Mac architecture, you can choose `arm64` or `x86_64` directly.",
+        f"1. 下载 `{DOWNLOAD_VARIANTS[0][0]}`。本版本仅支持 Apple Silicon（M 系列芯片）的 Mac。",
+        f"   Download `{DOWNLOAD_VARIANTS[0][0]}`. This build supports Apple Silicon (M-series) Macs only.",
         "2. 打开对应 DMG，并将 Moonlight 拖到 `Applications`。",
         "   Open the DMG and drag Moonlight to `Applications`.",
         "3. 先正常打开一次应用。",
