@@ -135,8 +135,8 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
     self.accumulatedQuantizedWheelLastEventMsY = 0;
     CGFloat wheelSpeed = HIDWheelScrollSpeedForHost(self.host);
 
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    if (!HIDValidateInputContext(inputCtx, "gcMouseScroll")) {
+    BOOL inputReady = HIDInputReady(self);
+    if (!HIDValidateInputReady(inputReady, "gcMouseScroll")) {
         return;
     }
 
@@ -146,7 +146,7 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
     }
 
     MLScrollTraceNoteDispatch(dispatchedAmount, NO, NO, nowMs);
-    LiSendHighResScrollEventCtx(inputCtx, dispatchedAmount);
+    LiSendHighResScrollEvent(dispatchedAmount);
     [SettingsClass updateScrollInputRuntimeStatusFor:self.host.uuid
                                           summaryKey:@"Scroll Runtime Path GameController"
                                            detailKey:@"Scroll Runtime Detail GameController"];
@@ -453,8 +453,8 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
     }
 
     if (self.shouldSendInputEvents) {
-        PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-        if (!HIDValidateInputContext(inputCtx, "scrollWheel")) {
+        BOOL inputReady = HIDInputReady(self);
+        if (!HIDValidateInputReady(inputReady, "scrollWheel")) {
             return;
         }
         BOOL dispatchHorizontal = dispatchedDeltaX != 0;
@@ -464,9 +464,9 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
             MLScrollTraceNoteDispatch(dispatchAmount, dispatchHorizontal, dispatchHighRes, LiGetMillis());
         }
         if (dispatchedDeltaX != 0) {
-            LiSendHighResHScrollEventCtx(inputCtx, dispatchedDeltaX);
+            LiSendHighResHScrollEvent(dispatchedDeltaX);
         } else if (dispatchedDeltaY != 0) {
-            LiSendHighResScrollEventCtx(inputCtx, dispatchedDeltaY);
+            LiSendHighResScrollEvent(dispatchedDeltaY);
         }
     }
 

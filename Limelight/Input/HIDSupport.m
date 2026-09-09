@@ -318,8 +318,8 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
         return;
     }
 
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(support);
-    if (!HIDValidateInputContext(inputCtx, op)) {
+    BOOL inputReady = HIDInputReady(support);
+    if (!HIDValidateInputReady(inputReady, op)) {
         return;
     }
 
@@ -335,7 +335,7 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
     };
 
     char translatedModifiers = HIDRemoteModifierFlagsToGenericFlags(remoteModifierMask);
-    HIDDispatchInput(support, inputCtx, ^{
+    HIDDispatchInput(support, inputReady, ^{
         for (NSUInteger i = 0; i < sizeof(remoteOrder) / sizeof(remoteOrder[0]); i++) {
             HIDKeyboardRemoteModifierMask mask = remoteOrder[i];
             if ((remoteModifierMask & mask) == 0) {
@@ -344,8 +344,8 @@ static void HIDDispatchSyntheticRemoteModifierTap(HIDSupport *support,
 
             unsigned short modifierKeyCode = HIDRemoteModifierKeyCode(mask);
             if (modifierKeyCode != 0) {
-                LiSendKeyboardEventCtx(inputCtx, modifierKeyCode, KEY_ACTION_DOWN, translatedModifiers);
-                LiSendKeyboardEventCtx(inputCtx, modifierKeyCode, KEY_ACTION_UP, 0);
+                LiSendKeyboardEvent(modifierKeyCode, KEY_ACTION_DOWN, translatedModifiers);
+                LiSendKeyboardEvent(modifierKeyCode, KEY_ACTION_UP, 0);
             }
         }
     });
@@ -535,7 +535,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     }
 
     if ([self reserveDetailedInputDiagnosticsLogSequence:&sequence]) {
-        Log(LOG_D, @"[inputdiag] #%lu %@ relative raw=(%.3f,%.3f) sent=(%d,%d) suppressed=%d ctx=%p",
+        Log(LOG_D, @"[inputdiag] #%lu %@ relative raw=(%.3f,%.3f) sent=(%d,%d) suppressed=%d ready=%d",
             (unsigned long)sequence,
             source ?: @"unknown",
             rawDeltaX,
@@ -543,7 +543,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
             sentDeltaX,
             sentDeltaY,
             suppressed ? 1 : 0,
-            self.inputContext);
+            self.inputReady ? 1 : 0);
     }
 }
 
@@ -568,14 +568,14 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     }
 
     if (diagnosticsEnabled && [self reserveDetailedInputDiagnosticsLogSequence:&sequence]) {
-        Log(LOG_D, @"[inputdiag] #%lu %@ absolute pos=(%d,%d) ref=%dx%d ctx=%p",
+        Log(LOG_D, @"[inputdiag] #%lu %@ absolute pos=(%d,%d) ref=%dx%d ready=%d",
             (unsigned long)sequence,
             source ?: @"unknown",
             x,
             y,
             width,
             height,
-            self.inputContext);
+            self.inputReady ? 1 : 0);
     }
 }
 
@@ -623,13 +623,13 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
 
     NSUInteger sequence = 0;
     if ([self reserveDetailedInputDiagnosticsLogSequence:&sequence]) {
-        Log(LOG_D, @"[inputdiag] #%lu mouse-button action=%@ button=%d mask=0x%02X synthetic=%d ctx=%p",
+        Log(LOG_D, @"[inputdiag] #%lu mouse-button action=%@ button=%d mask=0x%02X synthetic=%d ready=%d",
             (unsigned long)sequence,
             action ?: @"unknown",
             button,
             (unsigned int)mask,
             synthetic ? 1 : 0,
-            self.inputContext);
+            self.inputReady ? 1 : 0);
     }
 }
 
@@ -673,7 +673,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     if (shouldLog) {
         uint64_t traceStartMs = MLScrollTraceCurrent().startedMs;
         uint64_t traceAgeMs = traceStartMs != 0 && nowMs >= traceStartMs ? nowMs - traceStartMs : 0;
-        Log(LOG_D, @"[inputdiag] #%lu scroll trace=%llu ageMs=%llu mode=%@ raw=(%.3f,%.3f) rawWheel=(%ld,%ld) normalized=(%.3f,%.3f) dispatched=(%d,%d) continuous=%d precise=%d line=(%ld,%ld) point=(%ld,%ld) fixedRaw=(%ld,%ld) phase=%lu momentum=%lu ctx=%p",
+        Log(LOG_D, @"[inputdiag] #%lu scroll trace=%llu ageMs=%llu mode=%@ raw=(%.3f,%.3f) rawWheel=(%ld,%ld) normalized=(%.3f,%.3f) dispatched=(%d,%d) continuous=%d precise=%d line=(%ld,%ld) point=(%ld,%ld) fixedRaw=(%ld,%ld) phase=%lu momentum=%lu ready=%d",
             (unsigned long)sequence,
             (unsigned long long)traceId,
             (unsigned long long)traceAgeMs,
@@ -696,7 +696,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
             (long)fixedDeltaYRaw,
             (unsigned long)phase,
             (unsigned long)momentumPhase,
-            self.inputContext);
+            self.inputReady ? 1 : 0);
     }
 }
 
@@ -778,12 +778,12 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
             return;
         }
 
-        PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-        if (!inputCtx) {
+        BOOL inputReady = HIDInputReady(self);
+        if (!inputReady) {
             return;
         }
-        HIDDispatchInput(self, inputCtx, ^{
-            LiSendMultiControllerEventCtx(inputCtx, playerIndex, 1, lastButtonFlags, lastLeftTrigger, lastRightTrigger, lastLeftStickX, lastLeftStickY, lastRightStickX, lastRightStickY);
+        HIDDispatchInput(self, inputReady, ^{
+            LiSendMultiControllerEvent(playerIndex, 1, lastButtonFlags, lastLeftTrigger, lastRightTrigger, lastLeftStickX, lastLeftStickY, lastRightStickX, lastRightStickY);
         });
     }
 }
@@ -909,8 +909,8 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     }
 
     char modifiers = HIDRemoteModifierFlagsToGenericFlags(desired);
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    if (!inputCtx) {
+    BOOL inputReady = HIDInputReady(self);
+    if (!inputReady) {
         self.keyboardRemoteModifierMask = desired;
         return;
     }
@@ -927,7 +927,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     };
 
     self.keyboardRemoteModifierMask = desired;
-    HIDDispatchInput(self, inputCtx, ^{
+    HIDDispatchInput(self, inputReady, ^{
         for (NSUInteger i = 0; i < sizeof(remoteOrder) / sizeof(remoteOrder[0]); i++) {
             HIDKeyboardRemoteModifierMask mask = remoteOrder[i];
             if ((changed & mask) == 0) {
@@ -940,7 +940,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
             }
 
             char action = (desired & mask) != 0 ? KEY_ACTION_DOWN : KEY_ACTION_UP;
-            LiSendKeyboardEventCtx(inputCtx, keyCode, action, modifiers);
+            LiSendKeyboardEvent(keyCode, action, modifiers);
         }
     });
 }
@@ -959,12 +959,12 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
         [self syncKeyboardModifierStateForEvent:event];
         short keyCode = 0x8000 | [self translateKeyCodeWithEvent:event];
         char modifiers = [self translateKeyModifierWithEvent:event];
-        PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-        if (!HIDValidateInputContext(inputCtx, "keyDown")) {
+        BOOL inputReady = HIDInputReady(self);
+        if (!HIDValidateInputReady(inputReady, "keyDown")) {
             return;
         }
-        HIDDispatchInput(self, inputCtx, ^{
-            LiSendKeyboardEventCtx(inputCtx, keyCode, KEY_ACTION_DOWN, modifiers);
+        HIDDispatchInput(self, inputReady, ^{
+            LiSendKeyboardEvent(keyCode, KEY_ACTION_DOWN, modifiers);
         });
     }
 }
@@ -974,12 +974,12 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
         [self syncKeyboardModifierStateForEvent:event];
         short keyCode = 0x8000 | [self translateKeyCodeWithEvent:event];
         char modifiers = [self translateKeyModifierWithEvent:event];
-        PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-        if (!HIDValidateInputContext(inputCtx, "keyUp")) {
+        BOOL inputReady = HIDInputReady(self);
+        if (!HIDValidateInputReady(inputReady, "keyUp")) {
             return;
         }
-        HIDDispatchInput(self, inputCtx, ^{
-            LiSendKeyboardEventCtx(inputCtx, keyCode, KEY_ACTION_UP, modifiers);
+        HIDDispatchInput(self, inputReady, ^{
+            LiSendKeyboardEvent(keyCode, KEY_ACTION_UP, modifiers);
         });
     }
 }
@@ -989,19 +989,19 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     self.keyboardPhysicalModifierSourceMask = 0;
     self.keyboardRemoteModifierMask = 0;
     self.keyboardDeferredShortcutTranslationCommandMask = 0;
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    if (!inputCtx) {
+    BOOL inputReady = HIDInputReady(self);
+    if (!inputReady) {
         return;
     }
-    HIDDispatchInput(self, inputCtx, ^{
-        LiSendKeyboardEventCtx(inputCtx, 0x5B, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0x5C, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA0, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA1, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA2, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA3, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA4, KEY_ACTION_UP, 0);
-        LiSendKeyboardEventCtx(inputCtx, 0xA5, KEY_ACTION_UP, 0);
+    HIDDispatchInput(self, inputReady, ^{
+        LiSendKeyboardEvent(0x5B, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0x5C, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA0, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA1, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA2, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA3, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA4, KEY_ACTION_UP, 0);
+        LiSendKeyboardEvent(0xA5, KEY_ACTION_UP, 0);
     });
 }
 
@@ -1085,8 +1085,8 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
     char translatedModifiers = HIDRemoteModifierFlagsToGenericFlags(remoteModifierMask);
     short translatedKeyCode = (short)(0x8000 | [mappedKey shortValue]);
 
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    if (!HIDValidateInputContext(inputCtx, "sendSyntheticRemoteShortcut")) {
+    BOOL inputReady = HIDInputReady(self);
+    if (!HIDValidateInputReady(inputReady, "sendSyntheticRemoteShortcut")) {
         return;
     }
 
@@ -1101,7 +1101,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
         HIDKeyboardRemoteModifierMaskRightMeta,
     };
 
-    HIDDispatchInput(self, inputCtx, ^{
+    HIDDispatchInput(self, inputReady, ^{
         for (NSUInteger i = 0; i < sizeof(remoteOrder) / sizeof(remoteOrder[0]); i++) {
             HIDKeyboardRemoteModifierMask mask = remoteOrder[i];
             if ((remoteModifierMask & mask) == 0) {
@@ -1110,12 +1110,12 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
 
             unsigned short modifierKeyCode = HIDRemoteModifierKeyCode(mask);
             if (modifierKeyCode != 0) {
-                LiSendKeyboardEventCtx(inputCtx, modifierKeyCode, KEY_ACTION_DOWN, translatedModifiers);
+                LiSendKeyboardEvent(modifierKeyCode, KEY_ACTION_DOWN, translatedModifiers);
             }
         }
 
-        LiSendKeyboardEventCtx(inputCtx, translatedKeyCode, KEY_ACTION_DOWN, translatedModifiers);
-        LiSendKeyboardEventCtx(inputCtx, translatedKeyCode, KEY_ACTION_UP, translatedModifiers);
+        LiSendKeyboardEvent(translatedKeyCode, KEY_ACTION_DOWN, translatedModifiers);
+        LiSendKeyboardEvent(translatedKeyCode, KEY_ACTION_UP, translatedModifiers);
 
         for (NSInteger i = (NSInteger)(sizeof(remoteOrder) / sizeof(remoteOrder[0])) - 1; i >= 0; i--) {
             HIDKeyboardRemoteModifierMask mask = remoteOrder[(NSUInteger)i];
@@ -1125,7 +1125,7 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
 
             unsigned short modifierKeyCode = HIDRemoteModifierKeyCode(mask);
             if (modifierKeyCode != 0) {
-                LiSendKeyboardEventCtx(inputCtx, modifierKeyCode, KEY_ACTION_UP, 0);
+                LiSendKeyboardEvent(modifierKeyCode, KEY_ACTION_UP, 0);
             }
         }
     });
@@ -1247,8 +1247,8 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
         return;
     }
 
-    PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-    if (!HIDValidateInputContext(inputCtx, "dispatchRelativeMouseDelta")) {
+    BOOL inputReady = HIDInputReady(self);
+    if (!HIDValidateInputReady(inputReady, "dispatchRelativeMouseDelta")) {
         return;
     }
 
@@ -1271,8 +1271,8 @@ static MLScrollTraceSource MLScrollTraceSourceFromName(NSString *source) {
         return;
     }
 
-    HIDDispatchInput(self, inputCtx, ^{
-        LiSendMouseMoveEventCtx(inputCtx, moveX, moveY);
+    HIDDispatchInput(self, inputReady, ^{
+        LiSendMouseMoveEvent(moveX, moveY);
     });
 }
 
@@ -1990,34 +1990,34 @@ void myHIDDeviceRemovalCallback(void * _Nullable        context,
         if (flag == A_FLAG) {
             // Left Click
             if (set) {
-                 PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-                 if (!inputCtx) {
+                 BOOL inputReady = HIDInputReady(self);
+                 if (!inputReady) {
                      return;
                  }
-                HIDDispatchInput(self, inputCtx, ^{ LiSendMouseButtonEventCtx(inputCtx, BUTTON_ACTION_PRESS, BUTTON_LEFT); });
+                HIDDispatchInput(self, inputReady, ^{ LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_LEFT); });
             } else {
-                 PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-                 if (!inputCtx) {
+                 BOOL inputReady = HIDInputReady(self);
+                 if (!inputReady) {
                      return;
                  }
-                 HIDDispatchInput(self, inputCtx, ^{ LiSendMouseButtonEventCtx(inputCtx, BUTTON_ACTION_RELEASE, BUTTON_LEFT); });
+                 HIDDispatchInput(self, inputReady, ^{ LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT); });
             }
             return; // Don't set flag
         }
         if (flag == B_FLAG) {
             // Right Click
             if (set) {
-                 PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-                 if (!inputCtx) {
+                 BOOL inputReady = HIDInputReady(self);
+                 if (!inputReady) {
                      return;
                  }
-                 HIDDispatchInput(self, inputCtx, ^{ LiSendMouseButtonEventCtx(inputCtx, BUTTON_ACTION_PRESS, BUTTON_RIGHT); });
+                 HIDDispatchInput(self, inputReady, ^{ LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT); });
             } else {
-                 PML_INPUT_STREAM_CONTEXT inputCtx = HIDInputContext(self);
-                 if (!inputCtx) {
+                 BOOL inputReady = HIDInputReady(self);
+                 if (!inputReady) {
                      return;
                  }
-                 HIDDispatchInput(self, inputCtx, ^{ LiSendMouseButtonEventCtx(inputCtx, BUTTON_ACTION_RELEASE, BUTTON_RIGHT); });
+                 HIDDispatchInput(self, inputReady, ^{ LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT); });
             }
             return; // Don't set flag
         }

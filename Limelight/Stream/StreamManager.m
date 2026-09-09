@@ -7,11 +7,11 @@
 //
 
 #import "StreamManager.h"
+#import "StreamView.h"
 #import "CryptoManager.h"
 #import "HttpManager.h"
 #import "Utils.h"
 
-#import "StreamView.h"
 #import "ServerInfoResponse.h"
 #import "HttpResponse.h"
 #import "HttpRequest.h"

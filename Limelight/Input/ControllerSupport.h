@@ -23,7 +23,8 @@
 @property(nonatomic) BOOL shouldSendInputEvents;
 @property(nonatomic) BOOL gamepadMouseModeEnabled;
 @property(nonatomic) BOOL gamepadMouseModeLongPressMenuEnabled;
-@property(nonatomic, assign) void *inputContext;
+/// YES once the connection reports that the input stream is up. Send paths drop input while NO.
+@property(atomic, assign) BOOL inputReady;
 
 - (id)initWithConfig:(StreamConfiguration *)streamConfig
     presenceDelegate:(id<InputPresenceDelegate>)delegate;

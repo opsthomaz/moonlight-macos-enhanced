@@ -495,8 +495,8 @@ highFreqMotor:(unsigned short)highFreqMotor {
 
     self.hidSupport.shouldSendInputEvents = NO;
     self.controllerSupport.shouldSendInputEvents = NO;
-    self.hidSupport.inputContext = NULL;
-    self.controllerSupport.inputContext = NULL;
+    self.hidSupport.inputReady = NO;
+    self.controllerSupport.inputReady = NO;
 
     [self broadcastHostOnlineStateForExit];
 
@@ -805,7 +805,7 @@ highFreqMotor:(unsigned short)highFreqMotor {
     }
 
     self.controllerSupport.shouldSendInputEvents = NO;
-    self.controllerSupport.inputContext = NULL;
+    self.controllerSupport.inputReady = NO;
     [self.controllerSupport cleanup];
     self.controllerSupport = nil;
 }
@@ -940,7 +940,6 @@ highFreqMotor:(unsigned short)highFreqMotor {
     NSUInteger streamGeneration = self.activeStreamGeneration;
     [self releaseClipboardSyncOwnershipWithUnbind:NO];
     self.clipboardRuntimeConnection = nil;
-    LiSetThreadConnectionContext(NULL);
 
     // Defensive cleanup: avoid overlapping stream operations when a previous attempt
     // hasn't fully quiesced yet.
@@ -1339,21 +1338,17 @@ highFreqMotor:(unsigned short)highFreqMotor {
     // Ensure input context is bound as soon as input stream establishment completes.
     if (strcmp(stageName, "input stream establishment") == 0) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            void *inputContext = self.streamMan.connection ? [self.streamMan.connection inputStreamContext] : NULL;
-            if (inputContext == NULL) {
-                Log(LOG_W, @"Input stream established but inputContext is NULL");
+            if (self.streamMan.connection == nil) {
+                Log(LOG_W, @"Input stream established but no active connection");
                 return;
             }
-            PML_INPUT_STREAM_CONTEXT ctx = (PML_INPUT_STREAM_CONTEXT)inputContext;
-            Log(LOG_I, @"Input stream established: ctx=%p initialized=%d libInit=%d libConn=%p", ctx, ctx->initialized, LiInputContextIsInitialized(ctx), LiInputContextGetConnectionCtx(ctx));
-            if (ctx->initialized) {
-                self.hidSupport.inputContext = inputContext;
-                self.controllerSupport.inputContext = inputContext;
-                self.hidSupport.shouldSendInputEvents = YES;
-                self.controllerSupport.shouldSendInputEvents = YES;
-                [self.streamMan.connection notifyInputStreamReadyForMicrophoneControlIfNeeded];
-                [self rearmMouseCaptureIfPossibleWithReason:@"input-stream-established"];
-            }
+            Log(LOG_I, @"Input stream established");
+            self.hidSupport.inputReady = YES;
+            self.controllerSupport.inputReady = YES;
+            self.hidSupport.shouldSendInputEvents = YES;
+            self.controllerSupport.shouldSendInputEvents = YES;
+            [self.streamMan.connection notifyInputStreamReadyForMicrophoneControlIfNeeded];
+            [self rearmMouseCaptureIfPossibleWithReason:@"input-stream-established"];
         });
     }
 }
@@ -1394,12 +1389,10 @@ highFreqMotor:(unsigned short)highFreqMotor {
         [NSThread isMainThread] ? 1 : 0,
         (unsigned long)self.activeStreamGeneration);
     Connection *callbackConn = [Connection currentConnection];
-    void *callbackInputContext = callbackConn ? [callbackConn inputStreamContext] : NULL;
     dispatch_async(dispatch_get_main_queue(), ^{
-        Log(LOG_I, @"[diag] StreamViewController connectionStarted main block begin: window=%p callbackConn=%p callbackInput=%p streamConn=%p",
+        Log(LOG_I, @"[diag] StreamViewController connectionStarted main block begin: window=%p callbackConn=%p streamConn=%p",
             self.view.window,
             callbackConn,
-            callbackInputContext,
             self.streamMan.connection);
         @try {
                 // Notify session manager (main-thread only for window access)
@@ -1415,50 +1408,11 @@ highFreqMotor:(unsigned short)highFreqMotor {
                     self.streamMan.connection,
                     self.clipboardRuntimeConnection);
 
-                void *inputContext = callbackInputContext;
-                if (!inputContext && self.streamMan.connection) {
-                    inputContext = [self.streamMan.connection inputStreamContext];
-                }
-                if (inputContext) {
-                    PML_INPUT_STREAM_CONTEXT ctx = (PML_INPUT_STREAM_CONTEXT)inputContext;
-                    Log(LOG_I, @"Input ABI: size=%u off_init=%u off_conn=%u", LiGetInputContextStructSize(), LiGetInputContextOffsetInitialized(), LiGetInputContextOffsetConnectionContext());
-                    Log(LOG_I, @"Binding input context on connection start: ctx=%p initialized=%d libInit=%d libConn=%p", ctx, ctx->initialized, LiInputContextIsInitialized(ctx), LiInputContextGetConnectionCtx(ctx));
-                    self.hidSupport.inputContext = inputContext;
-                    self.controllerSupport.inputContext = inputContext;
-                    // Ensure input is enabled immediately after stream start
-                    self.hidSupport.shouldSendInputEvents = YES;
-                    self.controllerSupport.shouldSendInputEvents = YES;
-
-                    // If input stream isn't initialized yet, retry briefly to bind after start
-                    __block int remainingAttempts = 20;
-                    __weak typeof(self) weakSelf = self;
-                    __block void (^retryBind)(void) = nil;
-                    __weak void (^weakRetryBind)(void) = nil;
-                    retryBind = ^{
-                        __strong typeof(weakSelf) strongSelf = weakSelf;
-                        if (!strongSelf) {
-                            return;
-                        }
-                        PML_INPUT_STREAM_CONTEXT ctx = (PML_INPUT_STREAM_CONTEXT)inputContext;
-                        if (ctx != NULL && LiInputContextIsInitialized(ctx)) {
-                            strongSelf.hidSupport.inputContext = inputContext;
-                            strongSelf.controllerSupport.inputContext = inputContext;
-                            [strongSelf rearmMouseCaptureIfPossibleWithReason:@"input-context-retry-bound"];
-                            return;
-                        }
-                        if (remainingAttempts-- <= 0) {
-                            Log(LOG_W, @"Input context still not initialized after retries");
-                            return;
-                        }
-                        void (^strongRetryBind)(void) = weakRetryBind;
-                        if (!strongRetryBind) {
-                            return;
-                        }
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), strongRetryBind);
-                    };
-                    weakRetryBind = retryBind;
-                    retryBind();
-                }
+                self.hidSupport.inputReady = YES;
+                self.controllerSupport.inputReady = YES;
+                // Ensure input is enabled immediately after stream start
+                self.hidSupport.shouldSendInputEvents = YES;
+                self.controllerSupport.shouldSendInputEvents = YES;
 
         self.waitingForFirstRenderedFrame = YES;
         self.pendingDisconnectSource = nil;
@@ -1562,7 +1516,6 @@ highFreqMotor:(unsigned short)highFreqMotor {
 
 - (void)connectionTerminated:(int)errorCode {
     Log(LOG_I, @"Connection terminated: %ld (0x%08x)", (long)errorCode, (unsigned int)errorCode);
-    LiSetThreadConnectionContext(NULL);
     self.clipboardRuntimeConnection = nil;
     self.waitingForFirstRenderedFrame = NO;
     [self stopStreamHealthDiagnostics];
@@ -1576,8 +1529,8 @@ highFreqMotor:(unsigned short)highFreqMotor {
         [[StreamingSessionManager shared] didDisconnectForHost:self.app.host.uuid];
     }
 
-    self.hidSupport.inputContext = NULL;
-    self.controllerSupport.inputContext = NULL;
+    self.hidSupport.inputReady = NO;
+    self.controllerSupport.inputReady = NO;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [self releaseClipboardSyncOwnershipWithUnbind:NO];

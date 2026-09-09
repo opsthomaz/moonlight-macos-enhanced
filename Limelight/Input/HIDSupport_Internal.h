@@ -15,7 +15,6 @@
 #include <math.h>
 
 #include "Limelight.h"
-#include "Limelight-internal.h"
 
 #import <Carbon/Carbon.h>
 #import <IOKit/hid/IOHIDManager.h>
@@ -330,45 +329,31 @@ static inline BOOL isPS5(IOHIDDeviceRef device) {
     return vendorId == 0x054C && (productId == 0x0ce6);
 }
 
-static inline PML_INPUT_STREAM_CONTEXT HIDInputContext(HIDSupport *support) {
-    PML_INPUT_STREAM_CONTEXT ctx = (PML_INPUT_STREAM_CONTEXT)support.inputContext;
-    if (ctx != NULL && ctx->connectionContext != NULL) {
-        LiSetThreadConnectionContext(ctx->connectionContext);
-    }
-    return ctx;
+/// YES once the connection reports that the input stream is up.
+static inline BOOL HIDInputReady(HIDSupport *support) {
+    return support.inputReady;
 }
 
-static inline bool HIDValidateInputContext(PML_INPUT_STREAM_CONTEXT ctx, const char *op) {
+/// Logs a rate-limited warning and returns false when input cannot be sent yet.
+static inline bool HIDValidateInputReady(BOOL inputReady, const char *op) {
     static CFAbsoluteTime lastLogTime = 0;
+    if (inputReady) {
+        return true;
+    }
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    if (ctx == NULL) {
-        if (now - lastLogTime > 1.0) {
-            Log(LOG_W, @"Input dropped (%s): inputContext is NULL", op);
-            lastLogTime = now;
-        }
-        return false;
+    if (now - lastLogTime > 1.0) {
+        Log(LOG_W, @"Input dropped (%s): input stream not ready", op);
+        lastLogTime = now;
     }
-    if (!LiInputContextIsInitialized(ctx)) {
-        if (now - lastLogTime > 1.0) {
-            Log(LOG_W, @"Input dropped (%s): inputContext not initialized (ctx=%p conn=%p)", op, ctx, LiInputContextGetConnectionCtx(ctx));
-            lastLogTime = now;
-        }
-        return false;
-    }
-    return true;
+    return false;
 }
 
-static inline void HIDDispatchInput(HIDSupport *support, PML_INPUT_STREAM_CONTEXT inputCtx, dispatch_block_t block) {
-    if (inputCtx == NULL) {
+/// Runs an input block on the HID dispatch queue when the stream is ready.
+static inline void HIDDispatchInput(HIDSupport *support, BOOL inputReady, dispatch_block_t block) {
+    if (!inputReady) {
         return;
     }
-    PML_CONNECTION_CONTEXT connCtx = inputCtx->connectionContext;
-    dispatch_async(support.inputQueue, ^{
-        if (connCtx != NULL) {
-            LiSetThreadConnectionContext(connCtx);
-        }
-        block();
-    });
+    dispatch_async(support.inputQueue, block);
 }
 
 static inline CGFloat HIDPointerSensitivityForHost(TemporaryHost *host) {

@@ -1679,13 +1679,7 @@ static inline NSPoint MLClampFreeMousePointToExitEdge(NSPoint point,
 }
 
 - (BOOL)hasReadyInputContext {
-    void *inputContext = self.hidSupport.inputContext ?: self.controllerSupport.inputContext;
-    if (inputContext == NULL) {
-        return NO;
-    }
-
-    PML_INPUT_STREAM_CONTEXT ctx = (PML_INPUT_STREAM_CONTEXT)inputContext;
-    return ctx != NULL && LiInputContextIsInitialized(ctx);
+    return self.hidSupport.inputReady || self.controllerSupport.inputReady;
 }
 
 - (BOOL)canCaptureMouseNow {
@@ -2988,11 +2982,11 @@ static inline NSPoint MLClampFreeMousePointToExitEdge(NSPoint point,
     [self refreshMouseMovedAcceptanceState];
     [self updateControlCenterEntrypointHints];
     [self noteInputDiagnosticsCaptureArmed];
-    Log(LOG_D, @"[diag] captureMouse armed: key=%d fullscreen=%d remoteDesktop=%d inputCtx=%p",
+    Log(LOG_D, @"[diag] captureMouse armed: key=%d fullscreen=%d remoteDesktop=%d inputReady=%d",
         window.isKeyWindow ? 1 : 0,
         [self isWindowFullscreen] ? 1 : 0,
         self.isRemoteDesktopMode ? 1 : 0,
-        self.hidSupport.inputContext);
+        self.hidSupport.inputReady ? 1 : 0);
 }
 
 - (void)uncaptureMouse {

@@ -32,7 +32,8 @@ typedef void (^HIDFreeMouseAbsoluteSyncHandler)(void);
 @interface HIDSupport : NSObject
 @property(atomic) BOOL shouldSendInputEvents;
 @property(atomic) TemporaryHost *host;
-@property(nonatomic, assign) void *inputContext;
+/// YES once the connection reports that the input stream is up. Send paths drop input while NO.
+@property(atomic, assign) BOOL inputReady;
 @property(nonatomic, copy) HIDFreeMouseAbsoluteSyncHandler freeMouseAbsoluteSyncHandler;
 
 - (instancetype)init:(TemporaryHost *)host;
