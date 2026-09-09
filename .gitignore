@@ -11,3 +11,4 @@ Limelight/Version.xcconfig
 .plans/
 .DS_Store
 xcframeworks/
+.build/

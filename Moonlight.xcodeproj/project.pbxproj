@@ -74,6 +74,7 @@
 				Crypto/CryptoManager.m,
 				Crypto/IdManager.m,
 				Crypto/mkcert.c,
+				Core/MLScrollTrace.m,
 				Database/DataManager.m,
 				Database/TemporaryApp.m,
 				Database/TemporaryHost.m,
