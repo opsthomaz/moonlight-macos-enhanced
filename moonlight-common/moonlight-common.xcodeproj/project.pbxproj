@@ -12,6 +12,12 @@
 		4C1F46AA268C6CC7007056FC /* RtpVideoQueue.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C1F46A8268C6CC7007056FC /* RtpVideoQueue.c */; };
 		4C7CB91A2446D19D002B8D4E /* SimpleStun.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C7CB9192446D19D002B8D4E /* SimpleStun.c */; };
 		4C9D1D0B2B3C4D5E6F708193 /* MicrophoneStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C9D1D0A2B3C4D5E6F708192 /* MicrophoneStream.c */; };
+		E8DA33DB587A451BAD0CDBB8 /* CursorStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 2A15C2CA9A16438194BC1572 /* CursorStream.c */; };
+		F047AB3FD4F84032B1D63C8F /* Ds5HapticsStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 7AE898BA3CB942DC929A5ED9 /* Ds5HapticsStream.c */; };
+		0DA1282CF2754422BCD9B642 /* Ds5HapticsIrStream.c in Sources */ = {isa = PBXBuildFile; fileRef = B3DA8BDE173B47F28B6B3937 /* Ds5HapticsIrStream.c */; };
+		8B2E0B2030E34E879D5A196E /* RemoteTextContextStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 26EBF980703944AF82174E56 /* RemoteTextContextStream.c */; };
+		3A6E6312A6134D06AE104223 /* oblas_common.c in Sources */ = {isa = PBXBuildFile; fileRef = EB34B3EBF0404137B7346EF5 /* oblas_common.c */; };
+		A392D580CDBA48BD87D199F2 /* oblas_lite.c in Sources */ = {isa = PBXBuildFile; fileRef = BD78E7CC802043F88D16997B /* oblas_lite.c */; };
 		9857AEF01EBE85E10084F99E /* rs.c in Sources */ = {isa = PBXBuildFile; fileRef = 9857AEEE1EBE85E10084F99E /* rs.c */; };
 		98AB2E401CAD425A0089BB98 /* AudioStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 98AB2E1A1CAD423B0089BB98 /* AudioStream.c */; };
 		98AB2E411CAD425A0089BB98 /* ByteBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 98AB2E1B1CAD423B0089BB98 /* ByteBuffer.c */; };
@@ -48,8 +54,14 @@
 		4C1F46A8268C6CC7007056FC /* RtpVideoQueue.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = RtpVideoQueue.c; sourceTree = "<group>"; };
 		4C7CB9192446D19D002B8D4E /* SimpleStun.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = SimpleStun.c; sourceTree = "<group>"; };
 		4C9D1D0A2B3C4D5E6F708192 /* MicrophoneStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = MicrophoneStream.c; sourceTree = "<group>"; };
-		9857AEEE1EBE85E10084F99E /* rs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = rs.c; path = "moonlight-common-c/reedsolomon/rs.c"; sourceTree = "<group>"; };
-		9857AEEF1EBE85E10084F99E /* rs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = rs.h; path = "moonlight-common-c/reedsolomon/rs.h"; sourceTree = "<group>"; };
+		2A15C2CA9A16438194BC1572 /* CursorStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = CursorStream.c; sourceTree = "<group>"; };
+		7AE898BA3CB942DC929A5ED9 /* Ds5HapticsStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = Ds5HapticsStream.c; sourceTree = "<group>"; };
+		B3DA8BDE173B47F28B6B3937 /* Ds5HapticsIrStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = Ds5HapticsIrStream.c; sourceTree = "<group>"; };
+		26EBF980703944AF82174E56 /* RemoteTextContextStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = RemoteTextContextStream.c; sourceTree = "<group>"; };
+		EB34B3EBF0404137B7346EF5 /* oblas_common.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = oblas_common.c; path = "../nanors/deps/obl/oblas_common.c"; sourceTree = "<group>"; };
+		BD78E7CC802043F88D16997B /* oblas_lite.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = oblas_lite.c; path = "../nanors/deps/obl/oblas_lite.c"; sourceTree = "<group>"; };
+		9857AEEE1EBE85E10084F99E /* rs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = rs.c; path = "moonlight-common-c/nanors/rs.c"; sourceTree = "<group>"; };
+		9857AEEF1EBE85E10084F99E /* rs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = rs.h; path = "moonlight-common-c/nanors/rs.h"; sourceTree = "<group>"; };
 		98AB2DF01CAD422B0089BB98 /* callbacks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = callbacks.c; sourceTree = "<group>"; };
 		98AB2DF11CAD422B0089BB98 /* ChangeLog */ = {isa = PBXFileReference; lastKnownFileType = text; path = ChangeLog; sourceTree = "<group>"; };
 		98AB2DF21CAD422B0089BB98 /* CMakeLists.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = CMakeLists.txt; sourceTree = "<group>"; };
@@ -220,6 +232,12 @@
 				4C1F46A5268C6CC7007056FC /* RtpAudioQueue.c */,
 				4C1F46A8268C6CC7007056FC /* RtpVideoQueue.c */,
 				4C9D1D0A2B3C4D5E6F708192 /* MicrophoneStream.c */,
+				2A15C2CA9A16438194BC1572 /* CursorStream.c */,
+				7AE898BA3CB942DC929A5ED9 /* Ds5HapticsStream.c */,
+				B3DA8BDE173B47F28B6B3937 /* Ds5HapticsIrStream.c */,
+				26EBF980703944AF82174E56 /* RemoteTextContextStream.c */,
+				EB34B3EBF0404137B7346EF5 /* oblas_common.c */,
+				BD78E7CC802043F88D16997B /* oblas_lite.c */,
 				98AB2E1A1CAD423B0089BB98 /* AudioStream.c */,
 				98AB2E1B1CAD423B0089BB98 /* ByteBuffer.c */,
 				98AB2E1C1CAD423B0089BB98 /* ByteBuffer.h */,
@@ -333,6 +351,12 @@
 				4C1F46AA268C6CC7007056FC /* RtpVideoQueue.c in Sources */,
 				98AB2E471CAD425A0089BB98 /* Misc.c in Sources */,
 				4C9D1D0B2B3C4D5E6F708193 /* MicrophoneStream.c in Sources */,
+				E8DA33DB587A451BAD0CDBB8 /* CursorStream.c in Sources */,
+				F047AB3FD4F84032B1D63C8F /* Ds5HapticsStream.c in Sources */,
+				0DA1282CF2754422BCD9B642 /* Ds5HapticsIrStream.c in Sources */,
+				8B2E0B2030E34E879D5A196E /* RemoteTextContextStream.c in Sources */,
+				3A6E6312A6134D06AE104223 /* oblas_common.c in Sources */,
+				A392D580CDBA48BD87D199F2 /* oblas_lite.c in Sources */,
 				98AB2E481CAD425A0089BB98 /* Platform.c in Sources */,
 				98AB2E491CAD425A0089BB98 /* PlatformSockets.c in Sources */,
 				4C1F46A4268C6C7E007056FC /* PlatformCrypto.c in Sources */,
@@ -494,6 +518,9 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"moonlight-common-c/enet/include",
+					"moonlight-common-c/nanors",
+					"moonlight-common-c/nanors/deps",
+					"moonlight-common-c/nanors/deps/obl",
 					"../libs/**",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
@@ -517,6 +544,9 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"moonlight-common-c/enet/include",
+					"moonlight-common-c/nanors",
+					"moonlight-common-c/nanors/deps",
+					"moonlight-common-c/nanors/deps/obl",
 					"../libs/**",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
