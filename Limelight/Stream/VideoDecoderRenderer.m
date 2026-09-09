@@ -213,8 +213,6 @@ static BOOL MLGetSharedMetalPipelines(MTLPixelFormat pixelFormat,
                                       id<MTLComputePipelineState> *computePipelineOut,
                                       id<MTLRenderPipelineState> *blitPipelineOut,
                                       NSError **errorOut);
-static BOOL MLHDRTransferColorSpaceSupported(MLHDRTransferMode mode);
-
 static NSString *MLVideoRuntimeSummaryKey(MLActiveVideoRendererMode mode)
 {
     switch (mode) {
@@ -329,9 +327,9 @@ static MLHDRTransferMode MLResolveHDRTransferMode(BOOL hdrEnabled, NSInteger hdr
             return MLHDRTransferModeHLG;
         case 0:
         default:
-            return MLHDRTransferColorSpaceSupported(MLHDRTransferModeHLG)
-                ? MLHDRTransferModeHLG
-                : MLHDRTransferModePQ;
+            // HDR10/PQ is the interoperable default for game-streaming hosts.
+            // HLG remains available as an explicit preference.
+            return MLHDRTransferModePQ;
     }
 }
 
@@ -346,29 +344,6 @@ static NSString *MLHDRTransferModeName(MLHDRTransferMode mode)
         default:
             return @"SDR";
     }
-}
-
-static BOOL MLHDRTransferColorSpaceSupported(MLHDRTransferMode mode)
-{
-    CGColorSpaceRef colorSpace = nil;
-    switch (mode) {
-        case MLHDRTransferModeHLG:
-            colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2100_HLG);
-            break;
-        case MLHDRTransferModePQ:
-            colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2100_PQ);
-            break;
-        case MLHDRTransferModeSDR:
-        default:
-            return YES;
-    }
-
-    if (colorSpace != nil) {
-        CGColorSpaceRelease(colorSpace);
-        return YES;
-    }
-
-    return NO;
 }
 
 static float MLResolvedOpticalOutputScaleForTransfer(MLHDRTransferMode transferMode,
@@ -418,7 +393,10 @@ static float MLResolvedEDRHeadroomForStrategy(MLHDREDRStrategy strategy,
             return safePotential;
         case MLHDREDRStrategyAuto:
         default:
-            return MIN(safePotential, 1.55f);
+            // Let the system use the display's available headroom. The EDR
+            // metadata already describes the content peak; capping Auto at a
+            // fixed 1.55x SDR headroom needlessly darkens HDR content.
+            return safePotential;
     }
 }
 
@@ -817,7 +795,9 @@ static NSString *const kMetalShaderSource = @"#include <metal_stdlib>\n"
 "float3 toneMapHdrToSdr(float3 rgb, uint hdrMode, float opticalOutputScale, uint tonePolicy, float4 hdrLuminance) {\n"
 "    float3 linear = hdrLinearize(rgb, hdrMode, opticalOutputScale);\n"
 "    linear = bt2020ToRec709(linear);\n"
-"    float exposure = hdrMode == 1 ? 0.82 : 1.08;\n"
+"    // The transfer function and EDR metadata establish the reference white.\n"
+"    // Do not apply an additional global exposure here.\n"
+"    float exposure = 1.0;\n"
 "    float minLuminance = max(hdrLuminance.x, 0.0001);\n"
 "    float maxLuminance = max(hdrLuminance.y, 100.0);\n"
 "    float maxAverageLuminance = clamp(hdrLuminance.z, minLuminance, maxLuminance);\n"
