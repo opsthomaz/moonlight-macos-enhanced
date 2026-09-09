@@ -91,6 +91,7 @@ hardcoded dictionaries in `LanguageManager.swift`.
 | App identity | New bundle id and new product name. Name to be chosen by the owner. |
 | Language | English for code, comments, commits, and primary docs. README also in Simplified Chinese and Brazilian Portuguese. |
 | Toolchain | Xcode 27.0 for local builds; CI on `macos-26` runners with the newest Xcode they offer. Deployment target stays 12.0 until a feature needs otherwise. |
+| Architectures | Apple Silicon (arm64) only. The Intel and universal builds were dropped on 2026-09-09 after the `macos-26-intel` runner hung in `ibtool` during the phase 1 CI run; Moonlight V+ for PC also ships arm64 only on macOS. |
 | Commits | Only with explicit approval from the owner, one logical change per commit, conventional-commit subjects enforced by `.githooks/commit-msg`. No AI attribution anywhere. |
 | Upstream | Anything protocol-level that the client needs and `mic` lacks goes to qiin2333 as a PR, not into a fork. |
 
@@ -217,8 +218,8 @@ stream against the owner's Foundation Sunshine host, and an approval before
 anything is committed.
 
 1. **Housekeeping.** Cherry-pick BOOGAY's 8 commits; merge PRs 44–47; remove
-   `crash_log`; gitignore `xcframeworks/`; CI green on the fork with Xcode 27.
-   Done when: the fork builds in CI for arm64 and x86_64 and produces DMGs.
+   `crash_log`; gitignore `xcframeworks/`; CI green on the fork.
+   Done when: the fork builds in CI for arm64 and produces the arm64 DMG.
 2. **Protocol port.** Submodule to `mic`; bridge; Connection.m split;
    clipboard, microphone, HDR on the new API. Done when: a stream starts,
    input works in both mouse modes, clipboard text and image sync both ways,
@@ -245,7 +246,7 @@ picks a name early; it is independent of the protocol work.
 ## 6. Testing strategy
 
 - **Unit** (XCTest, CI): pure logic listed in 4.6.
-- **Build matrix** (CI): arm64 and x86_64, Release, unsigned, Xcode 27.
+- **Build** (CI): arm64, Release, unsigned, newest Xcode on the runner.
 - **Manual protocol checks** (owner's host, per phase): connect, both mouse
   modes, keyboard with modifiers, gamepad, clipboard text and image in both
   directions, microphone, HDR on and off, 7.1.4 and stereo, reconnect after

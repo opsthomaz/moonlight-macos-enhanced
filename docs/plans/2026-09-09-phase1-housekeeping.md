@@ -6,7 +6,7 @@
 
 **Architecture:** Pure integration work on a `phase1/housekeeping` branch: cherry-pick the BOOGAY renderer/shortcut commits, merge the four small upstream PRs as no-fast-forward merges that keep the contributors' authorship, clean the tree, and run the existing GitHub Actions workflow on the fork. No product code is written by hand in this phase beyond one-line fixes needed to keep the build green.
 
-**Tech Stack:** git, GitHub CLI (`gh`), Xcode 27.0 beta via `DEVELOPER_DIR`, GitHub Actions (`macos-26` and `macos-26-intel` runners).
+**Tech Stack:** git, GitHub CLI (`gh`), Xcode 27.0 beta via `DEVELOPER_DIR`, GitHub Actions (`macos-26` runner, arm64 only).
 
 **Spec:** `docs/design/2026-09-09-foundation-native-client-design.md`, section 5 phase 1 and section 2 "Inherited work available".
 
@@ -336,7 +336,7 @@ Expected: 2 files added.
 
 **Interfaces:**
 - Consumes: all commits from Tasks 2–7.
-- Produces: a green `Build and Release` workflow run on `origin/phase1/housekeeping` with three DMG artifacts.
+- Produces: a green `Build and Release` workflow run on `origin/phase1/housekeeping` with the arm64 DMG artifact. The inherited x86_64 and universal jobs were removed in this task after the Intel runner hung in `ibtool` for over 15 minutes on the first run.
 
 - [ ] **Step 1: Final local build of the branch tip**
 
@@ -345,7 +345,7 @@ Expected: `** BUILD SUCCEEDED **`; status empty.
 
 - [ ] **Step 2: Authorization gate for push**
 
-Show `git log --oneline --first-parent master..HEAD` (expected 13 commits: 7 cherry-picks, 4 merges, 2 chores) and ask: "Push `phase1/housekeeping` to `origin` and trigger CI?" Wait for yes.
+Show `git log --oneline --first-parent master..HEAD` (expected 15 commits: 7 cherry-picks, 4 merges, 2 chores, ci, docs) and ask: "Push `phase1/housekeeping` to `origin` and trigger CI?" Wait for yes.
 
 - [ ] **Step 3: Push and dispatch**
 
@@ -360,14 +360,14 @@ Expected: a run in `queued` or `in_progress`.
 - [ ] **Step 4: Wait and inspect**
 
 Run: `gh run watch -R opsthomaz/moonlight-macos-enhanced $(gh run list -R opsthomaz/moonlight-macos-enhanced -b phase1/housekeeping -L 1 --json databaseId --jq '.[0].databaseId') --exit-status; echo "rc=$?"`
-Expected: `rc=0`, jobs `Build arm64`, `Build x86_64`, `build_universal` all succeed, and `gh run view --json artifacts` lists three DMG artifacts (arm64, x86_64, universal).
+Expected: `rc=0`, jobs `Build arm64` and `build` succeed, and `gh run view --json artifacts` lists the arm64 app and DMG artifacts.
 
 - [ ] **Step 5: If the run fails**
 
 Read the failing step's log with `gh run view <id> --log-failed`. The two known-plausible failures and their fixes:
 
 1. `setup-xcode` cannot find a version: the workflow asks for `latest`; if the `macos-26` image renamed it, change `.github/workflows/build.yml:42` to `xcode-version: latest-stable`. Commit as `ci: pin setup-xcode to latest-stable` after an authorization gate.
-2. The universal merge step fails on the AWDL helper path (`std.skyhua.MoonlightMac.AwdlPrivilegedHelper`): the bundle id has not changed in this phase, so this must not happen; if it does, the helper build script is broken on the runner. Capture the log and stop; that is a phase 5 concern and the owner decides.
+2. The slice-verification step fails on the AWDL helper path (`std.skyhua.MoonlightMac.AwdlPrivilegedHelper`): the bundle id has not changed in this phase, so this must not happen; if it does, the helper build script is broken on the runner. Capture the log and stop; that is a phase 5 concern and the owner decides.
 
 Any other failure: capture the log, stop, report to the owner. Do not iterate blindly on CI.
 
@@ -394,4 +394,4 @@ Phase 1 is done when `origin` carries the branch, CI is green, and the owner has
 
 - **Spec coverage.** Phase 1 in the spec lists: cherry-pick BOOGAY (Task 2), merge PRs 44–47 (Tasks 3–5), remove `crash_log` (Task 6), gitignore `xcframeworks/` (Task 6), CI green on the fork with DMGs (Task 8). The design doc landing in the repo is Task 7. Xcode 27 for local builds is in the constraints and Task 2 Step 4. Nothing from phase 1 is uncovered.
 - **Placeholders.** None. Every command is literal; the only owner-dependent values are the CI run id, read from `gh run list` in the same step.
-- **Consistency.** Branch name `phase1/housekeeping` everywhere. Build command identical in Tasks 2, 3, 4, 5, 8. First-parent commit count 7 + 2 + 1 + 1 + 1 + 1 = 13 matches Task 8 Step 2.
+- **Consistency.** Branch name `phase1/housekeeping` everywhere. Build command identical in Tasks 2, 3, 4, 5, 8. First-parent commit count 7 + 2 + 1 + 1 + 1 + 1 + 2 = 15 matches Task 8 Step 2.
