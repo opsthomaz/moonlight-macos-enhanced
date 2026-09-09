@@ -951,23 +951,16 @@
         if (self.streamMan.connection) {
             MLVideoDiagnosticSnapshot snapshot;
             if ([self.streamMan.connection getVideoDiagnosticSnapshot:&snapshot]) {
-                Log(LOG_W, @"[diag] Low-level video snapshot: app=%d.%d.%d vPeer=%d vFull=%d vSock=%d vFrame=%u vData=%u/%u vParity=%u/%u vMissing=%u vSeq=%u->%u vPend=%u vDone=%u",
-                    snapshot.appVersionMajor,
-                    snapshot.appVersionMinor,
-                    snapshot.appVersionPatch,
-                    snapshot.videoReceivedDataFromPeer ? 1 : 0,
-                    snapshot.videoReceivedFullFrame ? 1 : 0,
-                    snapshot.videoRtpSocketValid,
-                    snapshot.videoCurrentFrameNumber,
-                    snapshot.videoReceivedDataPackets,
-                    snapshot.videoBufferDataPackets,
-                    snapshot.videoReceivedParityPackets,
-                    snapshot.videoBufferParityPackets,
-                    snapshot.videoMissingPackets,
-                    snapshot.videoNextContiguousSequenceNumber,
-                    snapshot.videoReceivedHighestSequenceNumber,
-                    snapshot.videoPendingFecBlocks,
-                    snapshot.videoCompletedFecBlocks);
+                Log(LOG_W, @"[diag] Video transport snapshot: packets=%u fec=%u fecRecovered=%u fecFailed=%u oos=%u invalid=%u bytes=%llu loss=%.2f%% pending=%d",
+                    snapshot.videoPackets,
+                    snapshot.fecPackets,
+                    snapshot.fecRecoveredPackets,
+                    snapshot.fecFailedPackets,
+                    snapshot.outOfSequencePackets,
+                    snapshot.invalidPackets,
+                    (unsigned long long)snapshot.bytesReceived,
+                    snapshot.frameLossPercent,
+                    snapshot.pendingFrames);
             }
         }
     }

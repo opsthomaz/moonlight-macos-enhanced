@@ -4699,9 +4699,10 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
         dequeuedAny = YES;
 
         // Cache fields before LiCompleteVideoFrame() frees the decode unit.
-        const uint64_t enqueueTimeMs = du->enqueueTimeMs;
-        const uint64_t receiveTimeMs = du->receiveTimeMs;
-        const unsigned int presentationTimeMs = du->presentationTimeMs;
+        // The library reports microseconds on the same monotonic clock as LiGetMillis().
+        const uint64_t enqueueTimeMs = du->enqueueTimeUs / 1000;
+        const uint64_t receiveTimeMs = du->receiveTimeUs / 1000;
+        const unsigned int presentationTimeMs = (unsigned int)(du->presentationTimeUs / 1000);
         const int fullLengthBytes = du->fullLength;
         const uint64_t nowMs = LiGetMillis();
 
@@ -5114,9 +5115,9 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
                                     length:entry->length
                                 bufferType:entry->bufferType
                                  frameType:decodeUnit->frameType
-                                       pts:decodeUnit->presentationTimeMs
+                                       pts:(unsigned int)(decodeUnit->presentationTimeUs / 1000)
                                frameNumber:decodeUnit->frameNumber
-                            enqueueTimeMs:decodeUnit->enqueueTimeMs];
+                            enqueueTimeMs:decodeUnit->enqueueTimeUs / 1000];
             if (ret != DR_OK) {
                 free(data);
                 return ret;
@@ -5135,9 +5136,9 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
                              length:offset
                          bufferType:BUFFER_TYPE_PICDATA
                           frameType:decodeUnit->frameType
-                                pts:decodeUnit->presentationTimeMs
+                                pts:(unsigned int)(decodeUnit->presentationTimeUs / 1000)
                         frameNumber:decodeUnit->frameNumber
-                     enqueueTimeMs:decodeUnit->enqueueTimeMs];
+                     enqueueTimeMs:decodeUnit->enqueueTimeUs / 1000];
 }
 
 // Legacy entry point

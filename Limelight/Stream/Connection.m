@@ -25,25 +25,15 @@
 #include <pthread.h>
 
 #include "Limelight.h"
-#include "Limelight-internal.h"
 #include "opus_multistream.h"
+#import "MLHdrMode.h"
 
-// Limelight-internal.h defines these as macros redirecting to
-// LiGetEffectiveConnectionContext()->xxx, which prevents direct
-// struct field access like _connectionContext.RemoteAddr.
-// Undef them so we can access ML_CONNECTION_CONTEXT fields directly.
-#undef RemoteAddr
-#undef LocalAddr
-#undef AddrLen
-#undef MicPingPayload
-#undef MicPortNumber
-#undef AudioEncryptionEnabled
-#undef EncryptionFeaturesEnabled
-
-// Until the protocol port lands, the client drives the library's own global
-// context instead of embedding a private one, so the public (non-Ctx) API used
-// by the input and video paths resolves to the same connection.
-#define _connectionContext gConnectionContext
+// Microphone uplink entry points. They are implemented by moonlight-common-c
+// (MicrophoneStream.c) but are not declared in its public header. The library
+// opens the stream itself during LiStartConnection when enableMic is set.
+extern int initializeMicrophoneStream(void);
+extern int sendMicrophoneOpusData(const unsigned char* opusData, int opusLength);
+extern bool isMicrophoneEncryptionEnabled(void);
 
 #define AUDIO_QUEUE_BUFFERS 4
 #define AUDIO_DIRECT_BUFFER_DURATION 55
@@ -66,24 +56,6 @@ static const double kEnhancedEQFrequencies24Band[] = {
     315.0, 400.0, 500.0, 630.0, 800.0, 1000.0, 1600.0, 2500.0, 4000.0, 6300.0, 10000.0, 16000.0,
 };
 static const NSUInteger kEnhancedEQBandCount24 = sizeof(kEnhancedEQFrequencies24Band) / sizeof(kEnhancedEQFrequencies24Band[0]);
-
-static int MLResolvedDynamicRangeModeForPreference(BOOL hdrEnabled, int hdrTransferFunction) {
-    if (!hdrEnabled) {
-        return DYNAMIC_RANGE_MODE_SDR;
-    }
-
-    switch (hdrTransferFunction) {
-        case 1:
-            return DYNAMIC_RANGE_MODE_HDR10_PQ;
-        case 2:
-            return DYNAMIC_RANGE_MODE_HLG;
-        case 0:
-        default:
-            // HDR10/PQ is the interoperable default for game-streaming hosts.
-            // HLG remains available as an explicit preference.
-            return DYNAMIC_RANGE_MODE_HDR10_PQ;
-    }
-}
 
 static inline float MLApplyMakeupGainAndSoftClip(float sample, float gain) {
     float x = sample * gain;
@@ -115,11 +87,9 @@ typedef NS_ENUM(NSInteger, MLAudioRendererBackend) {
 };
 
 @interface Connection ()
-#if defined(LI_MIC_CONTROL_START)
 @property (nonatomic, strong) AVAudioEngine* micAudioEngine;
 @property (nonatomic, strong) AVAudioConverter* micConverter;
 @property (nonatomic, strong) AVAudioFormat* micOutputFormat;
-#endif
 - (BOOL)initializeDirectAudioRendererWithOpusConfig:(const OPUS_MULTISTREAM_CONFIGURATION *)opusConfig
                                       channelLayout:(const AudioChannelLayout *)channelLayout;
 - (BOOL)initializeEnhancedAudioRendererWithOpusConfig:(const OPUS_MULTISTREAM_CONFIGURATION *)opusConfig;
@@ -210,33 +180,24 @@ typedef NS_ENUM(NSInteger, MLAudioRendererBackend) {
     BOOL _usingAudioFallbackDecoderConfig;
     BOOL _audioPrimaryReprobeAttempted;
 
-#if defined(LI_MIC_CONTROL_START)
     dispatch_queue_t _micQueue;
     OpusMSEncoder* _micEncoder;
     NSMutableData* _micPcmQueue;
     int _micSendFailures;
     BOOL _micStopping;
-    BOOL _micControlStarted;
     BOOL _micEncryptionStatusLogged;
-    uint64_t _micLastPingTimeMs;
-    uint32_t _micPingCount;
-#endif
-    dispatch_queue_t _clipboardControlQueue;
+    BOOL _disableHighQualitySurround;
+    BOOL _clipboardReady;
 }
 
-- (void)ensureControlContextBacklink {
-    if (_connectionContext.controlContext.connectionContext == NULL) {
-        _connectionContext.controlContext.connectionContext = &_connectionContext;
-    }
-}
+@synthesize clipboardReady = _clipboardReady;
 
-static NSMutableDictionary<NSValue*, Connection*>* gConnectionMap;
-static dispatch_queue_t gConnectionMapQueue;
-static void *gConnectionMapQueueKey = &gConnectionMapQueueKey;
-static os_unfair_lock gConnectionMapLock = OS_UNFAIR_LOCK_INIT;
 static os_unfair_lock gConnectionLifecycleLock = OS_UNFAIR_LOCK_INIT;
 static void *gMicQueueKey = &gMicQueueKey;
-static void *gClipboardQueueKey = &gClipboardQueueKey;
+
+// The app drives a single connection at a time; callbacks from the protocol
+// library resolve to it through this pointer.
+static __weak Connection *gActiveConnection;
 
 #define OUTPUT_BUS 0
 
@@ -245,54 +206,8 @@ static void *gClipboardQueueKey = &gClipboardQueueKey;
 // FIXME: Maybe we can use a smaller buffer on more modern iOS versions?
 #define CIRCULAR_BUFFER_DURATION 80
 
-// (moved to instance fields)
-
-static void EnsureConnectionMap(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        gConnectionMap = [NSMutableDictionary dictionary];
-        gConnectionMapQueue = dispatch_queue_create("moonlight.connection.map", DISPATCH_QUEUE_SERIAL);
-        dispatch_queue_set_specific(gConnectionMapQueue, gConnectionMapQueueKey, gConnectionMapQueueKey, NULL);
-    });
-}
-
-static void RegisterConnection(PML_CONNECTION_CONTEXT ctx, Connection* connection) {
-    if (ctx == NULL || connection == nil) {
-        return;
-    }
-    EnsureConnectionMap();
-    NSValue *key = [NSValue valueWithPointer:ctx];
-    os_unfair_lock_lock(&gConnectionMapLock);
-    gConnectionMap[key] = connection;
-    os_unfair_lock_unlock(&gConnectionMapLock);
-}
-
-static void UnregisterConnection(PML_CONNECTION_CONTEXT ctx) {
-    if (ctx == NULL) {
-        return;
-    }
-    EnsureConnectionMap();
-    NSValue *key = [NSValue valueWithPointer:ctx];
-    os_unfair_lock_lock(&gConnectionMapLock);
-    [gConnectionMap removeObjectForKey:key];
-    os_unfair_lock_unlock(&gConnectionMapLock);
-}
-
-static Connection* ConnectionForContext(PML_CONNECTION_CONTEXT ctx) {
-    if (ctx == NULL) {
-        return nil;
-    }
-    EnsureConnectionMap();
-    NSValue *key = [NSValue valueWithPointer:ctx];
-    __block Connection *conn = nil;
-    os_unfair_lock_lock(&gConnectionMapLock);
-    conn = gConnectionMap[key];
-    os_unfair_lock_unlock(&gConnectionMapLock);
-    return conn;
-}
-
 static Connection* CurrentConnection(void) {
-    return ConnectionForContext(LiGetThreadConnectionContext());
+    return gActiveConnection;
 }
 
 static VideoDecoderRenderer* ConnectionGetRendererSnapshot(Connection *conn) {
@@ -643,13 +558,11 @@ static int MLAudioRingBufferDurationForMode(MLAudioOutputMode mode) {
     }
 }
 
-#if defined(LI_MIC_CONTROL_START)
 // (moved to instance fields)
 static const int micSampleRate = 48000;
 static const int micChannels = 1;
 static const int micFrameSize = 960; // 20 ms at 48 kHz
 static const int micBitrate = 64000;
-#endif
 
 int DrDecoderSetup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags)
 {
@@ -687,17 +600,6 @@ void DrStop(void)
         [renderer stop];
         ConnectionClearRuntimeTargets(conn);
     }
-}
-
-int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit)
-{
-    // Use the optimized renderer path which includes buffer pooling
-    Connection *conn = CurrentConnection();
-    VideoDecoderRenderer *renderer = ConnectionGetRendererSnapshot(conn);
-    if (conn == nil || renderer == nil) {
-        return DR_OK;
-    }
-    return [renderer submitDecodeUnit:decodeUnit];
 }
 
 int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION originalOpusConfig, void* context, int flags)
@@ -757,7 +659,7 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION originalOpusC
 
     OPUS_MULTISTREAM_CONFIGURATION decoderConfig = opusConfig;
     BOOL preferCompatibility714Topology =
-        conn->_streamConfig.disableHighQualitySurround &&
+        conn->_disableHighQualitySurround &&
         conn->_hasAudioFallbackDecoderConfig;
     if (preferCompatibility714Topology) {
         MLPrepareOpusDecoderConfig(&conn->_audioFallbackDecoderConfig, &decoderConfig);
@@ -1757,7 +1659,7 @@ void ArDecodeAndPlaySample(char* sampleData, int sampleLength)
 - (BOOL)attempt714PrimaryDecoderReprobeWithSampleData:(char *)sampleData
                                          sampleLength:(int)sampleLength
 {
-    if (_streamConfig.disableHighQualitySurround ||
+    if (_disableHighQualitySurround ||
         !_usingAudioFallbackDecoderConfig ||
         _audioPrimaryReprobeAttempted ||
         !MLIs714HighQualityOpusConfig(&_audioAdvertisedOpusConfig) ||
@@ -2102,35 +2004,24 @@ void ClConnectionStarted(void)
         return;
     }
 
-    PML_CONNECTION_CONTEXT callbackCtx = conn != nil ? &gConnectionContext : NULL;
+    conn->_clipboardReady = YES;
     __weak Connection *weakMicConn = conn;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        if (callbackCtx != NULL) {
-            LiSetThreadConnectionContext(callbackCtx);
-        }
-
         Log(LOG_I, @"[diag] ClConnectionStarted dispatch begin: conn=%p callbacks=%p", conn, callbacks);
         [callbacks connectionStarted];
         Log(LOG_I, @"[diag] ClConnectionStarted callback returned");
 
-#if defined(LI_MIC_CONTROL_START)
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong Connection *micConn = weakMicConn;
             if (micConn) {
                 [micConn startMicrophoneIfNeeded];
             }
         });
-#endif
-
-        if (callbackCtx != NULL) {
-            LiSetThreadConnectionContext(NULL);
-        }
     });
 }
 
 void ClConnectionTerminated(int errorCode)
 {
-#if defined(LI_MIC_CONTROL_START)
     // Capture a weak reference to avoid retaining the connection if it's being deallocated
     __weak Connection *weakMicConn = CurrentConnection();
     // Stopping AVAudioEngine can occasionally block under CoreAudio stress.
@@ -2141,8 +2032,8 @@ void ClConnectionTerminated(int errorCode)
             [micConn stopMicrophoneIfNeeded];
         }
     });
-#endif
     Connection *conn = CurrentConnection();
+    conn->_clipboardReady = NO;
     id<ConnectionCallbacks> callbacks = ConnectionGetCallbacksSnapshot(conn);
     if (callbacks) {
         [callbacks connectionTerminated: errorCode];
@@ -2238,22 +2129,27 @@ void ClConnectionStatusUpdate(int status)
     }
 }
 
-void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
+void ClClipboardData(const char* data, int length)
 {
     Connection *conn = CurrentConnection();
     id<ConnectionCallbacks> callbacks = ConnectionGetCallbacksSnapshot(conn);
+    if (conn == nil || callbacks == nil || data == NULL || length <= 0) {
+        return;
+    }
 
-    Log(LOG_I, @"Clipboard item received: type=%u length=%u flags=0x%x itemId=%llu mime=%s name=%s",
-        item != NULL ? item->type : 0,
-        item != NULL ? item->length : 0,
-        item != NULL ? item->flags : 0,
-        item != NULL ? item->itemId : 0,
-        item != NULL && item->mimeType != NULL ? item->mimeType : "",
-        item != NULL && item->name != NULL ? item->name : "");
+    // The buffer is only valid for the duration of this call.
+    MLClipboardFrame *frame = [MLClipboardFrame frameFromData:[NSData dataWithBytes:data length:(NSUInteger)length]];
+    if (frame == nil) {
+        Log(LOG_W, @"[clipboard] Dropping malformed clipboard frame (%d bytes)", length);
+        return;
+    }
+    Log(LOG_I, @"[clipboard] Frame received: kind=%u token=%u length=%lu",
+        frame.kind, frame.token, (unsigned long)frame.payload.length);
 
-    if (callbacks != nil &&
-        [callbacks respondsToSelector:@selector(clipboardItemReceived:)]) {
-        [callbacks clipboardItemReceived:item];
+    if ([callbacks respondsToSelector:@selector(clipboardFrameReceived:)]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [callbacks clipboardFrameReceived:frame];
+        });
     }
 }
 
@@ -2271,30 +2167,29 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     // thread-safe and done outside initLock on purpose, since we
     // won't be able to acquire it if LiStartConnection is in
     // progress.
-    LiInterruptConnectionCtx(&_connectionContext);
+    LiInterruptConnection();
+    _clipboardReady = NO;
 
-#if defined(LI_MIC_CONTROL_START)
-    // Ensure mic queue is stopped before connection context teardown
+    // Ensure mic queue is stopped before connection teardown
     [self stopMicrophoneIfNeeded];
-#endif
 
     // We dispatch this async to get out because this can be invoked
     // on a thread inside common and we don't want to deadlock. It also avoids
     // blocking on the caller's thread waiting to acquire initLock.
-    // IMPORTANT: Capture self strongly in the block to keep the Connection object
-    // alive until LiStopConnectionCtx finishes. The context pointer points to
-    // an embedded struct inside self, so self must outlive the async block.
+    // Capture self strongly in the block to keep the Connection object alive
+    // until LiStopConnection finishes.
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         // Prevent self from being deallocated during cleanup
         __strong Connection *conn = self;
         if (conn == nil) {
             return;
         }
-        PML_CONNECTION_CONTEXT ctx = &gConnectionContext;
         os_unfair_lock_lock(&gConnectionLifecycleLock);
-        LiStopConnectionCtx(ctx);
+        LiStopConnection();
         os_unfair_lock_unlock(&gConnectionLifecycleLock);
-        UnregisterConnection(ctx);
+        if (gActiveConnection == conn) {
+            gActiveConnection = nil;
+        }
         // conn is released here after the block completes, ensuring
         // the Connection object stays alive throughout cleanup
     });
@@ -2326,8 +2221,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     _audioDeviceChannelCount = 2;
     _audioRenderChannelCount = 0;
     _audioBufferReadFrameOffset = 0;
-    _clipboardControlQueue = dispatch_queue_create("moonlight.connection.clipboard", DISPATCH_QUEUE_SERIAL);
-    dispatch_queue_set_specific(_clipboardControlQueue, gClipboardQueueKey, gClipboardQueueKey, NULL);
     [self updateVolume];
     
     NSString* cleanHost;
@@ -2348,8 +2241,8 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     LiInitializeServerInformation(&_serverInfo);
     _serverInfo.address = _hostString;
     _serverInfo.serverInfoAppVersion = _appVersionString;
-    // Some common-c forks (e.g. microphone protocol branches) assert that this field must be set.
-    // If the host hasn't been refreshed yet and we don't have it, fall back to the safest baseline.
+    // The library asserts that this field is set. If the host hasn't been
+    // refreshed yet and we don't have it, fall back to the safest baseline.
     _serverInfo.serverCodecModeSupport = (config.serverCodecModeSupport != 0) ? config.serverCodecModeSupport : SCM_H264;
     if (config.gfeVersion != nil) {
         _serverInfo.serverInfoGfeVersion = _gfeVersionString;
@@ -2369,29 +2262,16 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     _currentUpscalingMode = config.upscalingMode;
     _rendererStreamConfig = config;
 
-    memset(&_connectionContext, 0, sizeof(_connectionContext));
-    _connectionContext.controlContext.connectionContext = &_connectionContext;
-
-    // Initialize all socket fields to INVALID_SOCKET (-1) after memset zeroes them to 0.
-    // This prevents EXC_GUARD crashes on macOS when closeSocket() is called on an
-    // uninitialized socket field (fd 0 = stdin is guarded on macOS).
-    _connectionContext.videoContext.rtpSocket = INVALID_SOCKET;
-    _connectionContext.videoContext.firstFrameSocket = INVALID_SOCKET;
-    _connectionContext.audioContext.rtpSocket = INVALID_SOCKET;
-    _connectionContext.controlContext.ctlSock = INVALID_SOCKET;
-    _connectionContext.inputContext.inputSock = INVALID_SOCKET;
-    _connectionContext.micContext.micSocket = INVALID_SOCKET;
-    RegisterConnection(&_connectionContext, self);
+    gActiveConnection = self;
     LiInitializeStreamConfiguration(&_streamConfig);
     _streamConfig.width = config.width;
     _streamConfig.height = config.height;
     _streamConfig.fps = config.frameRate;
     _streamConfig.bitrate = config.bitRate;
     _streamConfig.audioConfiguration = config.audioConfiguration;
-    _streamConfig.disableHighQualitySurround = config.disableHighQualitySurround;
+    _disableHighQualitySurround = config.disableHighQualitySurround;
     _streamConfig.colorSpace = COLORSPACE_REC_709;
 
-#if defined(LI_MIC_CONTROL_START)
     // Enable microphone streaming only if requested in settings. The host may ignore it.
     BOOL enableMic = NO;
     @try {
@@ -2416,17 +2296,7 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     if (enableMic) {
         _streamConfig.encryptionFlags |= ENCFLG_MICROPHONE;
     }
-#endif
 
-#if !defined(VIDEO_FORMAT_H264_HIGH8_444)
-    // Legacy moonlight-common-c
-    _streamConfig.enableHdr = config.enableHdr;
-
-    // Use some of the HEVC encoding efficiency improvements to
-    // reduce bandwidth usage while still gaining some image
-    // quality improvement.
-    _streamConfig.hevcBitratePercentageMultiplier = 75;
-#endif
     
     // Resolve LOCAL/REMOTE for packet sizing with target-route evidence.
     // This avoids misclassifying local sessions when a VPN/proxy app is active but not used by this stream.
@@ -2519,7 +2389,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     // Additionally, iPhone X had a bug which would cause video
     // to freeze after a few minutes with HEVC prior to iOS 11.3.
     // As a result, we will only use HEVC on iOS 11.3 or later.
-#if defined(VIDEO_FORMAT_H264_HIGH8_444)
     // Newer moonlight-common-c uses supportedVideoFormats for codec negotiation.
     int codecPreference = config.videoCodecPreference;
     BOOL hevcDecodeSupported = NO;
@@ -2589,21 +2458,12 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
         config.enableHdr ? 1 : 0,
         enableYuv444 ? 1 : 0,
         supportedVideoFormats);
-#else
-    if (@available(iOS 11.3, tvOS 11.3, macOS 10.14, *)) {
-        _streamConfig.supportsHevc = config.allowHevc && VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
-    }
 
-    // HEVC must be supported when HDR is enabled
-    assert(!_streamConfig.enableHdr || _streamConfig.supportsHevc);
-#endif
-
-    _streamConfig.dynamicRangeMode =
-        MLResolvedDynamicRangeModeForPreference(config.enableHdr, config.hdrTransferFunction);
-    Log(LOG_I, @"[diag] HDR transfer preference resolved: hdr=%d tf=%d dynamicRangeMode=%d",
+    _streamConfig.hdrMode = (int)MLHdrModeForPreference(config.enableHdr, config.hdrTransferFunction);
+    Log(LOG_I, @"[diag] HDR transfer preference resolved: hdr=%d tf=%d hdrMode=%d",
         config.enableHdr ? 1 : 0,
         config.hdrTransferFunction,
-        _streamConfig.dynamicRangeMode);
+        _streamConfig.hdrMode);
 
     memcpy(_streamConfig.remoteInputAesKey, [config.riKey bytes], [config.riKey length]);
     memset(_streamConfig.remoteInputAesIv, 0, 16);
@@ -2639,7 +2499,7 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     _clCallbacks.logMessage = ClLogMessage;
     _clCallbacks.rumble = ClRumble;
     _clCallbacks.connectionStatusUpdate = ClConnectionStatusUpdate;
-    _clCallbacks.clipboardItemReceived = ClClipboardItemReceived;
+    _clCallbacks.clipboardData = ClClipboardData;
 
     return self;
 }
@@ -2659,179 +2519,21 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     return YES;
 }
 
-- (BOOL)isClipboardControlReady {
-    [self ensureControlContextBacklink];
-    PML_CONTROL_STREAM_CONTEXT ctx = &_connectionContext.controlContext;
-    if (ctx->stopping || ctx->connectionContext == NULL || ctx->packetTypes == NULL) {
+- (BOOL)sendClipboardFrame:(MLClipboardFrame *)frame {
+    if (frame == nil || !_clipboardReady) {
         return NO;
     }
-
-    if (APP_VERSION_AT_LEAST_CTX(ctx->connectionContext, 5, 0, 0)) {
-        if (ctx->client == NULL || ctx->peer == NULL || ctx->peer->state != ENET_PEER_STATE_CONNECTED) {
-            return NO;
-        }
-    }
-    else if (ctx->ctlSock == INVALID_SOCKET) {
+    NSData *bytes = frame.encodedData;
+    int rc = LiSendClipboardData(bytes.bytes, (int)bytes.length);
+    if (rc != 0) {
+        Log(LOG_D, @"[clipboard] LiSendClipboardData(%lu bytes) -> %d", (unsigned long)bytes.length, rc);
         return NO;
     }
-
-    if (ctx->encryptedControlStream && ctx->encryptionCtx == NULL) {
-        return NO;
-    }
-
     return YES;
 }
 
-- (NSString *)clipboardControlReadinessReason {
-    [self ensureControlContextBacklink];
-    PML_CONTROL_STREAM_CONTEXT ctx = &_connectionContext.controlContext;
-    if (ctx->stopping) {
-        return [NSString stringWithFormat:@"control-stopping-stage-%d", _connectionContext.stage];
-    }
-    if (ctx->connectionContext == NULL) {
-        return [NSString stringWithFormat:@"missing-connection-context-stage-%d", _connectionContext.stage];
-    }
-    if (ctx->packetTypes == NULL) {
-        return [NSString stringWithFormat:@"missing-packet-types-stage-%d", _connectionContext.stage];
-    }
-
-    if (APP_VERSION_AT_LEAST_CTX(ctx->connectionContext, 5, 0, 0)) {
-        if (ctx->client == NULL) {
-            return [NSString stringWithFormat:@"missing-enet-client-stage-%d", _connectionContext.stage];
-        }
-        if (ctx->peer == NULL) {
-            return [NSString stringWithFormat:@"missing-enet-peer-stage-%d", _connectionContext.stage];
-        }
-        if (ctx->peer->state != ENET_PEER_STATE_CONNECTED) {
-            return [NSString stringWithFormat:@"enet-peer-state-%u-stage-%d",
-                    (unsigned int)ctx->peer->state,
-                    _connectionContext.stage];
-        }
-    }
-    else if (ctx->ctlSock == INVALID_SOCKET) {
-        return [NSString stringWithFormat:@"invalid-tcp-control-socket-stage-%d", _connectionContext.stage];
-    }
-
-    if (ctx->encryptedControlStream && ctx->encryptionCtx == NULL) {
-        return [NSString stringWithFormat:@"missing-control-encryption-context-stage-%d", _connectionContext.stage];
-    }
-
-    return [NSString stringWithFormat:@"ready-stage-%d", _connectionContext.stage];
-}
-
-- (uint32_t)clipboardHostFeatureFlags {
-    [self ensureControlContextBacklink];
-    return LiGetHostFeatureFlagsCtx(&_connectionContext);
-}
-
-- (NSString *)clipboardControlDebugSummary {
-    [self ensureControlContextBacklink];
-    PML_CONTROL_STREAM_CONTEXT ctx = &_connectionContext.controlContext;
-    unsigned int peerState = ctx->peer != NULL ? (unsigned int)ctx->peer->state : 0;
-    return [NSString stringWithFormat:@"conn=%p connCtx=%p ctrlCtx=%p stage=%d packetTypes=%p client=%p peer=%p peerState=%u encrypted=%d encCtx=%p ctlSock=%d hostFlags=0x%08x",
-            self,
-            &_connectionContext,
-            ctx,
-            _connectionContext.stage,
-            ctx->packetTypes,
-            ctx->client,
-            ctx->peer,
-            peerState,
-            ctx->encryptedControlStream ? 1 : 0,
-            ctx->encryptionCtx,
-            (int)ctx->ctlSock,
-            [self clipboardHostFeatureFlags]];
-}
-
-- (int)performClipboardControlOperationNamed:(NSString *)name
-                                       block:(int (^)(void))block {
-    if (block == nil) {
-        return -1;
-    }
-
-    __block int result = -1;
-    void (^operation)(void) = ^{
-        [self ensureControlContextBacklink];
-        LiSetThreadConnectionContext(&_connectionContext);
-        os_unfair_lock_lock(&gConnectionLifecycleLock);
-        result = block();
-        os_unfair_lock_unlock(&gConnectionLifecycleLock);
-        Log(LOG_I, @"[clipboard] %@ result=%d summary=%@",
-            name ?: @"operation",
-            result,
-            [self clipboardControlDebugSummary]);
-    };
-
-    if (dispatch_get_specific(gClipboardQueueKey) == gClipboardQueueKey) {
-        operation();
-    } else {
-        dispatch_sync(_clipboardControlQueue, operation);
-    }
-
-    return result;
-}
-
-- (int)bindClipboardSession {
-    Log(LOG_I, @"[clipboard] bind request conn=%p connCtx=%p ctrlCtx=%p",
-        self,
-        &_connectionContext,
-        &_connectionContext.controlContext);
-    return [self performClipboardControlOperationNamed:@"bind"
-                                                 block:^int {
-        return LiBindClipboardSession();
-    }];
-}
-
-- (int)unbindClipboardSession {
-    Log(LOG_I, @"[clipboard] unbind request conn=%p connCtx=%p ctrlCtx=%p",
-        self,
-        &_connectionContext,
-        &_connectionContext.controlContext);
-    return [self performClipboardControlOperationNamed:@"unbind"
-                                                 block:^int {
-        return LiUnbindClipboardSession();
-    }];
-}
-
-- (int)requestClipboardSnapshot {
-    Log(LOG_I, @"[clipboard] snapshot request conn=%p connCtx=%p ctrlCtx=%p",
-        self,
-        &_connectionContext,
-        &_connectionContext.controlContext);
-    return [self performClipboardControlOperationNamed:@"snapshot"
-                                                 block:^int {
-        return LiRequestClipboardSnapshot();
-    }];
-}
-
-- (int)sendClipboardItemData:(NSData *)data
-                        type:(uint8_t)type
-                    mimeType:(NSString *)mimeType
-                        name:(NSString *)name
-                      itemId:(uint64_t)itemId
-                 contentHash:(uint64_t)contentHash {
-    LI_CLIPBOARD_ITEM item;
-    memset(&item, 0, sizeof(item));
-
-    item.type = type;
-    item.data = data.bytes;
-    item.length = (uint32_t)data.length;
-    item.mimeType = mimeType.length > 0 ? mimeType.UTF8String : NULL;
-    item.name = name.length > 0 ? name.UTF8String : NULL;
-    item.itemId = itemId;
-    item.contentHash = contentHash;
-
-    Log(LOG_I, @"[clipboard] send item request conn=%p connCtx=%p ctrlCtx=%p type=%u length=%u itemId=%llu",
-        self,
-        &_connectionContext,
-        &_connectionContext.controlContext,
-        item.type,
-        item.length,
-        item.itemId);
-    return [self performClipboardControlOperationNamed:@"send-item"
-                                                 block:^int {
-        return LiSendClipboardItem(&item);
-    }];
+- (uint32_t)hostFeatureFlags {
+    return LiGetHostFeatureFlags();
 }
 
 - (BOOL)getVideoDiagnosticSnapshot:(MLVideoDiagnosticSnapshot *)snapshot {
@@ -2841,42 +2543,20 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
 
     memset(snapshot, 0, sizeof(*snapshot));
 
-    snapshot->appVersionMajor = _connectionContext.AppVersionQuad[0];
-    snapshot->appVersionMinor = _connectionContext.AppVersionQuad[1];
-    snapshot->appVersionPatch = _connectionContext.AppVersionQuad[2];
-    snapshot->videoReceivedDataFromPeer = _connectionContext.videoContext.receivedDataFromPeer ? YES : NO;
-    snapshot->videoReceivedFullFrame = _connectionContext.videoContext.receivedFullFrame ? YES : NO;
-    snapshot->videoRtpSocketValid = _connectionContext.videoContext.rtpSocket != INVALID_SOCKET ? 1 : 0;
-    snapshot->videoCurrentFrameNumber = _connectionContext.videoContext.rtpQueue.currentFrameNumber;
-    snapshot->videoMissingPackets = _connectionContext.videoContext.rtpQueue.missingPackets;
-    snapshot->videoPendingFecBlocks = _connectionContext.videoContext.rtpQueue.pendingFecBlockList.count;
-    snapshot->videoCompletedFecBlocks = _connectionContext.videoContext.rtpQueue.completedFecBlockList.count;
-    snapshot->videoBufferDataPackets = _connectionContext.videoContext.rtpQueue.bufferDataPackets;
-    snapshot->videoBufferParityPackets = _connectionContext.videoContext.rtpQueue.bufferParityPackets;
-    snapshot->videoReceivedDataPackets = _connectionContext.videoContext.rtpQueue.receivedDataPackets;
-    snapshot->videoReceivedParityPackets = _connectionContext.videoContext.rtpQueue.receivedParityPackets;
-    snapshot->videoReceivedHighestSequenceNumber = _connectionContext.videoContext.rtpQueue.receivedHighestSequenceNumber;
-    snapshot->videoNextContiguousSequenceNumber = _connectionContext.videoContext.rtpQueue.nextContiguousSequenceNumber;
+    const RTP_VIDEO_STATS *stats = LiGetRTPVideoStats();
+    if (stats != NULL) {
+        snapshot->videoPackets = stats->packetCountVideo;
+        snapshot->fecPackets = stats->packetCountFec;
+        snapshot->fecRecoveredPackets = stats->packetCountFecRecovered;
+        snapshot->fecFailedPackets = stats->packetCountFecFailed;
+        snapshot->outOfSequencePackets = stats->packetCountOOS;
+        snapshot->invalidPackets = stats->packetCountInvalid + stats->packetCountFecInvalid;
+    }
+    snapshot->bytesReceived = LiGetRTPVideoBytesReceived();
+    snapshot->frameLossPercent = LiGetEstimatedVideoFrameLossPercentage();
+    snapshot->pendingFrames = LiGetPendingVideoFrames();
 
     return YES;
-}
-
-#if defined(LI_MIC_CONTROL_START)
-- (void)notifyInputStreamReadyForMicrophoneControlIfNeeded
-{
-    if (!_streamConfig.enableMic || _micStopping || _micControlStarted) {
-        return;
-    }
-
-    if (self.micAudioEngine == nil || !self.micAudioEngine.isRunning) {
-        return;
-    }
-
-    if (!_connectionContext.inputContext.initialized) {
-        return;
-    }
-
-    _micControlStarted = [self sendMicrophoneControlPacket:LI_MIC_CONTROL_START reason:@"start-input-ready"];
 }
 
 - (void)startMicrophoneIfNeeded
@@ -2889,7 +2569,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
 
     _micSendFailures = 0;
     _micStopping = NO;
-    _micControlStarted = NO;
     _micEncryptionStatusLogged = NO;
 
     // Create encoder/queue once
@@ -2957,32 +2636,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     return result;
 }
 
-- (BOOL)sendMicrophoneControlPacket:(uint8_t)control reason:(NSString *)reason
-{
-    PML_INPUT_STREAM_CONTEXT inputCtx = &_connectionContext.inputContext;
-    if (!inputCtx->initialized) {
-        Log(LOG_W, @"Skipping microphone control %@: input stream not initialized", reason);
-        return NO;
-    }
-
-    int err = LiSendMicrophoneControlCtx(inputCtx,
-                                         control,
-                                         micSampleRate,
-                                         micChannels,
-                                         micBitrate);
-    if (err < 0) {
-        Log(LOG_W, @"Failed to send microphone control %@: %d", reason, err);
-        return NO;
-    }
-
-    Log(LOG_I, @"Sent microphone control %@ (rate=%d channels=%d bitrate=%d)",
-        reason,
-        micSampleRate,
-        micChannels,
-        micBitrate);
-    return YES;
-}
-
 - (void)startMicrophoneEngineLocked
 {
     if (_micStopping || !_streamConfig.enableMic) {
@@ -2993,36 +2646,12 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
         return;
     }
 
-    if (initializeMicrophoneStreamCtx(&_connectionContext.micContext, &_connectionContext) != 0) {
-        Log(LOG_W, @"Failed to initialize microphone stream socket\n");
+    // Idempotent: LiStartConnection already opened the socket when the host
+    // accepted the microphone stream.
+    if (initializeMicrophoneStream() != 0) {
+        Log(LOG_W, @"Failed to initialize microphone stream socket");
         return;
     }
-
-    // Log resolved addresses for diagnosis
-    {
-        char connAddrStr[INET6_ADDRSTRLEN] = {0};
-        char micAddrStr[INET6_ADDRSTRLEN] = {0};
-        struct sockaddr_storage *connAddr = &_connectionContext.RemoteAddr;
-        struct sockaddr_storage *micAddr = &_connectionContext.micContext.micRemoteAddr;
-        if (connAddr->ss_family == AF_INET) {
-            inet_ntop(AF_INET, &((struct sockaddr_in*)connAddr)->sin_addr, connAddrStr, sizeof(connAddrStr));
-        } else if (connAddr->ss_family == AF_INET6) {
-            inet_ntop(AF_INET6, &((struct sockaddr_in6*)connAddr)->sin6_addr, connAddrStr, sizeof(connAddrStr));
-        }
-        if (micAddr->ss_family == AF_INET) {
-            inet_ntop(AF_INET, &((struct sockaddr_in*)micAddr)->sin_addr, micAddrStr, sizeof(micAddrStr));
-        } else if (micAddr->ss_family == AF_INET6) {
-            inet_ntop(AF_INET6, &((struct sockaddr_in6*)micAddr)->sin6_addr, micAddrStr, sizeof(micAddrStr));
-        }
-        Log(LOG_I, @"Mic diag: connRemoteAddr=%s (family=%d addrLen=%d) micRemoteAddr=%s (family=%d addrLen=%d) micPort=%u",
-            connAddrStr, connAddr->ss_family, _connectionContext.AddrLen,
-            micAddrStr, micAddr->ss_family, _connectionContext.micContext.micAddrLen,
-            _connectionContext.micContext.micPortNumber);
-    }
-
-    _micPingCount = 0;
-    _micLastPingTimeMs = PltGetMillis();
-    Log(LOG_I, @"Mic mode: default");
 
     int err = 0;
     if (_micEncoder == NULL) {
@@ -3208,11 +2837,8 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
         [self.micAudioEngine stop];
         self.micAudioEngine = nil;
         self.micConverter = nil;
-        _micControlStarted = NO;
         return;
     }
-
-    _micControlStarted = [self sendMicrophoneControlPacket:LI_MIC_CONTROL_START reason:@"start"];
 }
 
 - (void)drainMicPcmAndSend
@@ -3221,14 +2847,8 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
         return;
     }
 
-    LiSetThreadConnectionContext(&_connectionContext);
-
-    if (!_micControlStarted && _connectionContext.inputContext.initialized) {
-        _micControlStarted = [self sendMicrophoneControlPacket:LI_MIC_CONTROL_START reason:@"start-deferred"];
-    }
-
     if (!_micEncryptionStatusLogged) {
-        BOOL micEncryptionEnabled = (_connectionContext.EncryptionFeaturesEnabled & SS_ENC_MICROPHONE) != 0;
+        BOOL micEncryptionEnabled = isMicrophoneEncryptionEnabled();
         Log(LOG_I, @"Microphone uplink encryption negotiated: %@", micEncryptionEnabled ? @"enabled" : @"disabled");
         _micEncryptionStatusLogged = YES;
     }
@@ -3239,12 +2859,11 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     while (_micPcmQueue.length >= packetPcmBytes) {
         const int16_t* pcm = (const int16_t*)_micPcmQueue.bytes;
 
-        unsigned char opusPayload[1500];
-        int opusLen = opus_multistream_encode(_micEncoder, pcm, micFrameSize, opusPayload, (opus_int32)sizeof(opusPayload));
+        // Sized with slack so the library's AES-CBC path can pad in place.
+        unsigned char opusPayload[1500 + 16];
+        int opusLen = opus_multistream_encode(_micEncoder, pcm, micFrameSize, opusPayload, 1500);
         if (opusLen > 0) {
-            int sent = sendMicrophoneOpusDataCtx(&_connectionContext.micContext,
-                                                 opusPayload,
-                                                 opusLen);
+            int sent = sendMicrophoneOpusData(opusPayload, opusLen);
 
             if (sent < 0) {
                 _micSendFailures++;
@@ -3266,10 +2885,6 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
 - (void)stopMicrophoneIfNeeded
 {
     _micStopping = YES;
-    if (_micControlStarted) {
-        [self sendMicrophoneControlPacket:LI_MIC_CONTROL_STOP reason:@"stop"];
-        _micControlStarted = NO;
-    }
     _micEncryptionStatusLogged = NO;
 
     if (self.micAudioEngine != nil) {
@@ -3296,16 +2911,8 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
     } else {
         teardownBlock();
     }
-
-    destroyMicrophoneStreamCtx(&_connectionContext.micContext);
 }
-#endif
 
-#if !defined(LI_MIC_CONTROL_START)
-- (void)notifyInputStreamReadyForMicrophoneControlIfNeeded
-{
-}
-#endif
 
 static void FillOutputBuffer(void *aqData,
                              AudioQueueRef inAQ,
@@ -3336,16 +2943,15 @@ static void FillOutputBuffer(void *aqData,
 -(void) main
 {
     os_unfair_lock_lock(&gConnectionLifecycleLock);
-    LiSetThreadConnectionContext(&_connectionContext);
-    Log(LOG_I, @"LiStartConnectionCtx: connCtx=%p globalCtx=%p inputCtx=%p", &_connectionContext, LiGetGlobalConnectionContextPtr(), LiGetInputContextFromConnectionCtx(&_connectionContext));
-    LiStartConnectionCtx(&_connectionContext,
-                         &_serverInfo,
-                         &_streamConfig,
-                         &_clCallbacks,
-                         &_drCallbacks,
-                         &_arCallbacks,
-                         (__bridge void *)self, 0,
-                         (__bridge void *)self, 0);
+    gActiveConnection = self;
+    Log(LOG_I, @"LiStartConnection: conn=%p", self);
+    LiStartConnection(&_serverInfo,
+                      &_streamConfig,
+                      &_clCallbacks,
+                      &_drCallbacks,
+                      &_arCallbacks,
+                      (__bridge void *)self, 0,
+                      (__bridge void *)self, 0);
     os_unfair_lock_unlock(&gConnectionLifecycleLock);
 }
 

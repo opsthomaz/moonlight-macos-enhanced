@@ -74,42 +74,6 @@ static uint64_t MLGenerateClipboardItemId(void) {
     return (((uint64_t)LiGetMillis()) << 16) ^ (uint64_t)arc4random();
 }
 
-@interface MLClipboardItemSnapshot : NSObject
-
-@property(nonatomic, assign) uint8_t type;
-@property(nonatomic, strong) NSData *data;
-@property(nonatomic, copy) NSString *mimeType;
-@property(nonatomic, copy) NSString *name;
-@property(nonatomic, assign) uint64_t itemId;
-@property(nonatomic, assign) uint64_t contentHash;
-@property(nonatomic, assign) uint32_t flags;
-
-+ (instancetype)snapshotWithClipboardItem:(const LI_CLIPBOARD_ITEM *)item;
-
-@end
-
-@implementation MLClipboardItemSnapshot
-
-+ (instancetype)snapshotWithClipboardItem:(const LI_CLIPBOARD_ITEM *)item {
-    if (item == NULL) {
-        return nil;
-    }
-
-    MLClipboardItemSnapshot *snapshot = [[MLClipboardItemSnapshot alloc] init];
-    snapshot.type = item->type;
-    snapshot.data = item->length > 0 && item->data != NULL
-        ? [NSData dataWithBytes:item->data length:item->length]
-        : [NSData data];
-    snapshot.mimeType = item->mimeType != NULL ? [NSString stringWithUTF8String:item->mimeType] : nil;
-    snapshot.name = item->name != NULL ? [NSString stringWithUTF8String:item->name] : nil;
-    snapshot.itemId = item->itemId;
-    snapshot.contentHash = item->contentHash;
-    snapshot.flags = item->flags;
-    return snapshot;
-}
-
-@end
-
 @interface MLStreamScopedConnectionCallbacks : NSObject <ConnectionCallbacks>
 
 - (instancetype)initWithOwner:(id<MLStreamScopedCallbackOwner>)owner generation:(NSUInteger)generation;
@@ -200,10 +164,10 @@ highFreqMotor:(unsigned short)highFreqMotor {
     }];
 }
 
-- (void)clipboardItemReceived:(const LI_CLIPBOARD_ITEM *)item {
-    [self forwardIfCurrentNamed:@"clipboardItemReceived" block:^(id<MLStreamScopedCallbackOwner> owner) {
-        if ([owner respondsToSelector:@selector(clipboardItemReceived:)]) {
-            [owner clipboardItemReceived:item];
+- (void)clipboardFrameReceived:(MLClipboardFrame *)frame {
+    [self forwardIfCurrentNamed:@"clipboardFrameReceived" block:^(id<MLStreamScopedCallbackOwner> owner) {
+        if ([owner respondsToSelector:@selector(clipboardFrameReceived:)]) {
+            [owner clipboardFrameReceived:frame];
         }
     }];
 }
@@ -1347,7 +1311,6 @@ highFreqMotor:(unsigned short)highFreqMotor {
             self.controllerSupport.inputReady = YES;
             self.hidSupport.shouldSendInputEvents = YES;
             self.controllerSupport.shouldSendInputEvents = YES;
-            [self.streamMan.connection notifyInputStreamReadyForMicrophoneControlIfNeeded];
             [self rearmMouseCaptureIfPossibleWithReason:@"input-stream-established"];
         });
     }
@@ -1755,8 +1718,7 @@ highFreqMotor:(unsigned short)highFreqMotor {
         return;
     }
 
-    Connection *connection = [self currentClipboardConnection];
-    BOOL shouldRequestUnbind = shouldUnbind && self.clipboardSessionBound;
+    (void)shouldUnbind;
 
     [self stopClipboardMonitor];
     self.clipboardAwaitingInitialSnapshot = NO;
@@ -1765,13 +1727,6 @@ highFreqMotor:(unsigned short)highFreqMotor {
     self.clipboardHasPendingEchoSuppressionHash = NO;
     self.clipboardPendingEchoSuppressionHash = 0;
     [self resetClipboardActivationDiagnosticState];
-
-    if (shouldRequestUnbind && connection != nil) {
-        int err = [connection unbindClipboardSession];
-        if (err != 0 && err != LI_ERR_UNSUPPORTED) {
-            Log(LOG_W, @"[clipboard] Failed to unbind clipboard session: %d", err);
-        }
-    }
 
     if (MLActiveClipboardController == self) {
         MLActiveClipboardController = nil;
@@ -1830,41 +1785,21 @@ highFreqMotor:(unsigned short)highFreqMotor {
         return;
     }
 
-    [self resetClipboardActivationDiagnosticState];
-    int bindErr = [connection bindClipboardSession];
-    if (bindErr == LI_ERR_UNSUPPORTED) {
-        Log(LOG_I, @"[clipboard] Host does not advertise clipboard sync");
-        return;
-    }
-    if (bindErr != 0) {
+    if (!connection.clipboardReady) {
         [self logClipboardActivationStateIfNeeded:MLClipboardActivationDiagnosticStateControlNotReady
-                                          message:[NSString stringWithFormat:@"Clipboard activation is waiting for bind to succeed (err=%d)", bindErr]];
+                                          message:@"Clipboard activation is waiting for the control stream"];
         return;
     }
 
+    [self resetClipboardActivationDiagnosticState];
     self.clipboardSessionBound = YES;
-    self.clipboardAwaitingInitialSnapshot = YES;
-    self.clipboardInitialSnapshotDeadlineMs = [self nowMs] + 1500;
+    self.clipboardAwaitingInitialSnapshot = NO;
+    self.clipboardInitialSnapshotDeadlineMs = 0;
     self.clipboardHasPendingEchoSuppressionHash = NO;
     self.clipboardPendingEchoSuppressionHash = 0;
     self.clipboardLastChangeCount = [NSPasteboard generalPasteboard].changeCount;
-    Log(LOG_I, @"[clipboard] Clipboard session bound locally; requesting initial host snapshot");
+    Log(LOG_I, @"[clipboard] Clipboard sync active for host=%@", self.app.host.uuid ?: @"(unknown)");
     [self startClipboardMonitorIfNeeded];
-
-    int snapshotErr = [connection requestClipboardSnapshot];
-    if (snapshotErr == LI_ERR_UNSUPPORTED) {
-        Log(LOG_I, @"[clipboard] Clipboard snapshot request was not supported by host");
-        self.clipboardSessionBound = NO;
-        self.clipboardAwaitingInitialSnapshot = NO;
-        self.clipboardInitialSnapshotDeadlineMs = 0;
-        [self stopClipboardMonitor];
-        return;
-    }
-    if (snapshotErr != 0) {
-        Log(LOG_W, @"[clipboard] Initial clipboard snapshot request failed: %d", snapshotErr);
-        self.clipboardAwaitingInitialSnapshot = NO;
-        self.clipboardInitialSnapshotDeadlineMs = 0;
-    }
 }
 
 - (void)startClipboardMonitorIfNeeded {
@@ -1941,171 +1876,159 @@ highFreqMotor:(unsigned short)highFreqMotor {
         return;
     }
 
-    NSData *payload = nil;
-    NSString *mimeType = nil;
-    NSString *itemName = nil;
-    uint8_t itemType = LI_CLIPBOARD_ITEM_TYPE_NONE;
+    // Anything we cannot represent is consumed so the poll does not retry it every tick.
+    self.clipboardLastChangeCount = changeCount;
 
-    NSData *pngData = [pasteboard dataForType:NSPasteboardTypePNG];
-    if (pngData.length > 0) {
-        if (pngData.length > MLClipboardImageSizeLimit) {
-            self.clipboardLastChangeCount = changeCount;
-            Log(LOG_I, @"[clipboard] Rejecting image clipboard payload larger than %lu bytes",
-                (unsigned long)MLClipboardImageSizeLimit);
-            return;
-        }
-        payload = pngData;
-        mimeType = @"image/png";
-        itemType = LI_CLIPBOARD_ITEM_TYPE_IMAGE;
-    } else {
-        NSArray<NSImage *> *images = [pasteboard readObjectsForClasses:@[[NSImage class]] options:nil];
-        if (images.count > 1) {
-            self.clipboardLastChangeCount = changeCount;
-            Log(LOG_I, @"[clipboard] Ignoring multi-image clipboard payload");
-            return;
-        } else if (images.count == 1) {
-            NSImage *image = images.firstObject;
-            NSBitmapImageRep *bitmapRep = nil;
-            for (NSImageRep *rep in image.representations) {
-                if ([rep isKindOfClass:[NSBitmapImageRep class]]) {
-                    bitmapRep = (NSBitmapImageRep *)rep;
-                    break;
-                }
-            }
-            if (bitmapRep == nil && image.TIFFRepresentation != nil) {
-                bitmapRep = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
-            }
-            pngData = bitmapRep != nil ? [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] : nil;
-            if (pngData.length == 0) {
-                self.clipboardLastChangeCount = changeCount;
-                Log(LOG_I, @"[clipboard] Ignoring image clipboard payload that could not be normalized to PNG");
-                return;
-            }
-            if (pngData.length > MLClipboardImageSizeLimit) {
-                self.clipboardLastChangeCount = changeCount;
-                Log(LOG_I, @"[clipboard] Rejecting image clipboard payload larger than %lu bytes",
-                    (unsigned long)MLClipboardImageSizeLimit);
-                return;
-            }
-            payload = pngData;
-            mimeType = @"image/png";
-            itemType = LI_CLIPBOARD_ITEM_TYPE_IMAGE;
-        } else {
-            NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
-            if (text == nil) {
-                self.clipboardLastChangeCount = changeCount;
-                Log(LOG_I, @"[clipboard] Ignoring unsupported clipboard payload");
-                return;
-            }
-            text = MLNormalizeClipboardText(text);
-            NSData *textData = [text dataUsingEncoding:NSUTF8StringEncoding];
-            if (textData == nil) {
-                self.clipboardLastChangeCount = changeCount;
-                Log(LOG_W, @"[clipboard] Failed to encode clipboard text as UTF-8");
-                return;
-            }
-            payload = textData;
-            mimeType = @"text/plain;charset=utf-8";
-            itemType = LI_CLIPBOARD_ITEM_TYPE_TEXT;
-        }
-    }
-
-    if (payload == nil || itemType == LI_CLIPBOARD_ITEM_TYPE_NONE) {
+    NSData *pngData = [self currentClipboardPNGDataFromPasteboard:pasteboard];
+    NSData *textData = [self currentClipboardTextDataFromPasteboard:pasteboard];
+    if (pngData == nil && textData == nil) {
+        Log(LOG_I, @"[clipboard] Ignoring unsupported clipboard payload");
         return;
     }
 
-    uint64_t contentHash = MLComputeClipboardHash(itemType, payload, itemName);
+    NSUInteger inlineLimit = MIN(MLClipboardImageSizeLimit, MLClipboardFrameMaxPayload);
+    if (pngData != nil && pngData.length > inlineLimit) {
+        Log(LOG_I, @"[clipboard] Rejecting image clipboard payload larger than %lu bytes (out-of-band transfer not implemented)",
+            (unsigned long)inlineLimit);
+        pngData = nil;
+    }
+    if (textData != nil && textData.length > MLClipboardFrameMaxPayload) {
+        Log(LOG_I, @"[clipboard] Rejecting text clipboard payload larger than %lu bytes",
+            (unsigned long)MLClipboardFrameMaxPayload);
+        textData = nil;
+    }
+    if (pngData == nil && textData == nil) {
+        return;
+    }
+
+    // Echo suppression: skip what we just wrote from the host.
+    NSData *hashedPayload = pngData ?: textData;
+    uint8_t hashedKind = pngData != nil ? MLClipboardKindPNG : MLClipboardKindText;
+    uint64_t contentHash = MLComputeClipboardHash(hashedKind, hashedPayload, nil);
     if (self.clipboardHasPendingEchoSuppressionHash &&
         self.clipboardPendingEchoSuppressionHash == contentHash) {
-        self.clipboardLastChangeCount = changeCount;
         self.clipboardHasPendingEchoSuppressionHash = NO;
         self.clipboardPendingEchoSuppressionHash = 0;
         Log(LOG_I, @"[clipboard] Suppressed echoed local clipboard item hash=%llu", contentHash);
         return;
     }
 
-    int err = [connection sendClipboardItemData:payload
-                                           type:itemType
-                                       mimeType:mimeType
-                                           name:itemName
-                                         itemId:MLGenerateClipboardItemId()
-                                    contentHash:contentHash];
-    if (err == LI_ERR_UNSUPPORTED) {
-        self.clipboardLastChangeCount = changeCount;
-        Log(LOG_I, @"[clipboard] Host rejected clipboard item type=%u; keeping sync active for supported types",
-            itemType);
-        return;
-    }
-    if (err != 0) {
-        self.clipboardSessionBound = NO;
-        self.clipboardAwaitingInitialSnapshot = NO;
-        self.clipboardInitialSnapshotDeadlineMs = 0;
-        [self logClipboardActivationStateIfNeeded:MLClipboardActivationDiagnosticStateControlNotReady
-                                          message:[NSString stringWithFormat:@"Clipboard send failed; will retry bind (err=%d)", err]];
-        Log(LOG_W, @"[clipboard] Failed to send local clipboard item: %d", err);
-        return;
+    // Text and image from one change travel as a burst sharing a non-zero token, text first.
+    uint32_t token = 0;
+    if (pngData != nil && textData != nil) {
+        while (token == 0) {
+            token = arc4random();
+        }
     }
 
-    self.clipboardLastChangeCount = changeCount;
+    NSMutableArray<MLClipboardFrame *> *frames = [NSMutableArray array];
+    if (textData != nil) {
+        MLClipboardFrame *frame = [MLClipboardFrame frameWithKind:MLClipboardKindText token:token payload:textData];
+        if (frame != nil) {
+            [frames addObject:frame];
+        }
+    }
+    if (pngData != nil) {
+        MLClipboardFrame *frame = [MLClipboardFrame frameWithKind:MLClipboardKindPNG token:token payload:pngData];
+        if (frame != nil) {
+            [frames addObject:frame];
+        }
+    }
+
+    for (MLClipboardFrame *frame in frames) {
+        if (![connection sendClipboardFrame:frame]) {
+            [self logClipboardActivationStateIfNeeded:MLClipboardActivationDiagnosticStateControlNotReady
+                                              message:@"Clipboard send failed; the host may not support clipboard sync"];
+            Log(LOG_W, @"[clipboard] Failed to send local clipboard frame kind=%u length=%lu",
+                frame.kind, (unsigned long)frame.payload.length);
+            return;
+        }
+        Log(LOG_I, @"[clipboard] Sent local clipboard frame kind=%u length=%lu token=%u",
+            frame.kind, (unsigned long)frame.payload.length, frame.token);
+    }
     [self resetClipboardActivationDiagnosticState];
-    Log(LOG_I, @"[clipboard] Sent local clipboard item: type=%u length=%lu name=%@",
-        itemType,
-        (unsigned long)payload.length,
-        itemName ?: @"");
 }
 
-- (void)applyReceivedClipboardSnapshot:(MLClipboardItemSnapshot *)item {
-    if (item == nil) {
+/// PNG bytes for the image on the pasteboard, re-encoding TIFF or other bitmap flavors when needed.
+/// Returns nil when there is no single image.
+- (NSData *)currentClipboardPNGDataFromPasteboard:(NSPasteboard *)pasteboard {
+    NSData *pngData = [pasteboard dataForType:NSPasteboardTypePNG];
+    if (pngData.length > 0 && MLClipboardDataLooksLikePNG(pngData)) {
+        return pngData;
+    }
+
+    NSArray<NSImage *> *images = [pasteboard readObjectsForClasses:@[[NSImage class]] options:nil];
+    if (images.count != 1) {
+        if (images.count > 1) {
+            Log(LOG_I, @"[clipboard] Ignoring multi-image clipboard payload");
+        }
+        return nil;
+    }
+
+    NSImage *image = images.firstObject;
+    NSBitmapImageRep *bitmapRep = nil;
+    for (NSImageRep *rep in image.representations) {
+        if ([rep isKindOfClass:[NSBitmapImageRep class]]) {
+            bitmapRep = (NSBitmapImageRep *)rep;
+            break;
+        }
+    }
+    if (bitmapRep == nil && image.TIFFRepresentation != nil) {
+        bitmapRep = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+    }
+    NSData *encoded = bitmapRep != nil ? [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] : nil;
+    if (encoded.length == 0) {
+        Log(LOG_I, @"[clipboard] Ignoring image clipboard payload that could not be normalized to PNG");
+        return nil;
+    }
+    return encoded;
+}
+
+/// UTF-8 bytes of the normalized pasteboard text, or nil when there is no text.
+- (NSData *)currentClipboardTextDataFromPasteboard:(NSPasteboard *)pasteboard {
+    NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
+    if (text == nil) {
+        return nil;
+    }
+    NSData *textData = [MLNormalizeClipboardText(text) dataUsingEncoding:NSUTF8StringEncoding];
+    if (textData.length == 0) {
+        return nil;
+    }
+    return textData;
+}
+
+- (void)applyReceivedClipboardFrame:(MLClipboardFrame *)frame {
+    if (frame == nil) {
         return;
     }
 
     if (![self isClipboardSyncOwner]) {
-        Log(LOG_I, @"[clipboard] Ignoring clipboard item for inactive stream session");
+        Log(LOG_I, @"[clipboard] Ignoring clipboard frame for inactive stream session");
         return;
     }
 
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    uint64_t suppressionHash = item.contentHash;
+    uint64_t suppressionHash = 0;
 
-    if (item.type == LI_CLIPBOARD_ITEM_TYPE_NONE) {
-        if ((item.flags & LI_CLIPBOARD_ITEM_FLAG_SNAPSHOT) != 0) {
-            [pasteboard clearContents];
-            self.clipboardLastChangeCount = pasteboard.changeCount;
-            self.clipboardHasPendingEchoSuppressionHash = NO;
-            self.clipboardPendingEchoSuppressionHash = 0;
-            Log(LOG_I, @"[clipboard] Applied empty host clipboard snapshot");
-        }
-        self.clipboardAwaitingInitialSnapshot = NO;
-        self.clipboardInitialSnapshotDeadlineMs = 0;
-        return;
-    }
-
-    switch (item.type) {
-        case LI_CLIPBOARD_ITEM_TYPE_TEXT: {
-            NSData *textData = item.data ?: [NSData data];
-            NSString *text = [[NSString alloc] initWithData:textData encoding:NSUTF8StringEncoding];
+    switch (frame.kind) {
+        case MLClipboardKindText: {
+            NSString *text = [[NSString alloc] initWithData:frame.payload encoding:NSUTF8StringEncoding];
             if (text == nil) {
                 Log(LOG_W, @"[clipboard] Failed to decode remote text clipboard payload");
-                self.clipboardAwaitingInitialSnapshot = NO;
-                self.clipboardInitialSnapshotDeadlineMs = 0;
                 return;
             }
             text = MLNormalizeClipboardText(text);
             [pasteboard clearContents];
             [pasteboard setString:text forType:NSPasteboardTypeString];
-            if (suppressionHash == 0) {
-                NSData *normalizedData = [text dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
-                suppressionHash = MLComputeClipboardHash(LI_CLIPBOARD_ITEM_TYPE_TEXT, normalizedData, nil);
-            }
+            NSData *normalizedData = [text dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+            suppressionHash = MLComputeClipboardHash(MLClipboardKindText, normalizedData, nil);
             break;
         }
-        case LI_CLIPBOARD_ITEM_TYPE_IMAGE: {
-            NSData *pngData = item.data ?: [NSData data];
+        case MLClipboardKindPNG: {
+            NSData *pngData = frame.payload;
             NSImage *image = [[NSImage alloc] initWithData:pngData];
             if (image == nil) {
                 Log(LOG_W, @"[clipboard] Failed to decode remote image clipboard payload");
-                self.clipboardAwaitingInitialSnapshot = NO;
-                self.clipboardInitialSnapshotDeadlineMs = 0;
                 return;
             }
             [pasteboard clearContents];
@@ -2115,46 +2038,32 @@ highFreqMotor:(unsigned short)highFreqMotor {
             if (tiffData.length > 0) {
                 [pasteboard setData:tiffData forType:NSPasteboardTypeTIFF];
             }
-            if (suppressionHash == 0) {
-                suppressionHash = MLComputeClipboardHash(LI_CLIPBOARD_ITEM_TYPE_IMAGE, pngData, nil);
-            }
+            suppressionHash = MLComputeClipboardHash(MLClipboardKindPNG, pngData, nil);
             break;
         }
-        default:
-            Log(LOG_W, @"[clipboard] Ignoring unsupported remote clipboard item type: %u", item.type);
-            self.clipboardAwaitingInitialSnapshot = NO;
-            self.clipboardInitialSnapshotDeadlineMs = 0;
+        case MLClipboardKindRef:
+            Log(LOG_I, @"[clipboard] Ignoring out-of-band clipboard reference (not implemented)");
             return;
     }
 
     self.clipboardLastChangeCount = pasteboard.changeCount;
-    self.clipboardAwaitingInitialSnapshot = NO;
-    self.clipboardInitialSnapshotDeadlineMs = 0;
-    if (suppressionHash != 0) {
-        self.clipboardHasPendingEchoSuppressionHash = YES;
-        self.clipboardPendingEchoSuppressionHash = suppressionHash;
-    } else {
-        self.clipboardHasPendingEchoSuppressionHash = NO;
-        self.clipboardPendingEchoSuppressionHash = 0;
-    }
+    self.clipboardHasPendingEchoSuppressionHash = suppressionHash != 0;
+    self.clipboardPendingEchoSuppressionHash = suppressionHash;
 }
 
-- (void)clipboardItemReceived:(const LI_CLIPBOARD_ITEM *)item {
-    MLClipboardItemSnapshot *snapshot = [MLClipboardItemSnapshot snapshotWithClipboardItem:item];
-    dispatch_async(dispatch_get_main_queue(), ^{
+- (void)clipboardFrameReceived:(MLClipboardFrame *)frame {
+    dispatch_block_t apply = ^{
         if (![self isClipboardSyncEnabledForCurrentHost]) {
-            Log(LOG_I, @"[clipboard] Ignoring clipboard item because clipboard sync is disabled");
+            Log(LOG_I, @"[clipboard] Ignoring clipboard frame because clipboard sync is disabled");
             return;
         }
-        Log(LOG_I, @"[clipboard] StreamViewController received item: type=%u length=%u flags=0x%x itemId=%llu mime=%s name=%s",
-            snapshot != nil ? snapshot.type : 0,
-            snapshot != nil ? (unsigned int)snapshot.data.length : 0,
-            snapshot != nil ? snapshot.flags : 0,
-            snapshot != nil ? snapshot.itemId : 0,
-            snapshot.mimeType.UTF8String ?: "",
-            snapshot.name.UTF8String ?: "");
-        [self applyReceivedClipboardSnapshot:snapshot];
-    });
+        [self applyReceivedClipboardFrame:frame];
+    };
+    if ([NSThread isMainThread]) {
+        apply();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), apply);
+    }
 }
 
 @end

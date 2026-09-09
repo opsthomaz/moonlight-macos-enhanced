@@ -9,6 +9,7 @@
 #import "StreamConfiguration.h"
 #import "VideoDecoderRenderer.h"
 #import "Limelight.h"
+#import "MLClipboardFrame.h"
 
 @protocol ConnectionCallbacks <NSObject>
 
@@ -24,32 +25,27 @@
 - (void)connectionStatusUpdate:(int)status;
 
 @optional
-- (void)clipboardItemReceived:(const LI_CLIPBOARD_ITEM *)item;
+/// Delivered on the main queue for every clipboard frame the host sends.
+- (void)clipboardFrameReceived:(MLClipboardFrame *)frame;
 
 @end
 
+/// Point-in-time video transport counters from the protocol library.
 typedef struct {
-    int appVersionMajor;
-    int appVersionMinor;
-    int appVersionPatch;
-    BOOL videoReceivedDataFromPeer;
-    BOOL videoReceivedFullFrame;
-    int videoRtpSocketValid;
-    uint32_t videoCurrentFrameNumber;
-    uint32_t videoMissingPackets;
-    uint32_t videoPendingFecBlocks;
-    uint32_t videoCompletedFecBlocks;
-    uint32_t videoBufferDataPackets;
-    uint32_t videoBufferParityPackets;
-    uint32_t videoReceivedDataPackets;
-    uint32_t videoReceivedParityPackets;
-    uint32_t videoReceivedHighestSequenceNumber;
-    uint32_t videoNextContiguousSequenceNumber;
+    uint32_t videoPackets;
+    uint32_t fecPackets;
+    uint32_t fecRecoveredPackets;
+    uint32_t fecFailedPackets;
+    uint32_t outOfSequencePackets;
+    uint32_t invalidPackets;
+    uint64_t bytesReceived;
+    double frameLossPercent;
+    int pendingFrames;
 } MLVideoDiagnosticSnapshot;
 
 @interface Connection : NSOperation <NSStreamDelegate>
 
-// Returns the connection bound to the current thread context, if any.
+/// Returns the active connection, if any.
 + (Connection *)currentConnection;
 
 @property(nonatomic, readonly) VideoDecoderRenderer *renderer;
@@ -59,21 +55,15 @@ typedef struct {
     connectionCallbacks:(id<ConnectionCallbacks>)callbacks;
 /// Returns NO until the control stream has an RTT estimate.
 - (BOOL)getEstimatedRtt:(uint32_t *)rttMs variance:(uint32_t *)varianceMs;
-- (BOOL)isClipboardControlReady;
-- (NSString *)clipboardControlReadinessReason;
-- (uint32_t)clipboardHostFeatureFlags;
-- (NSString *)clipboardControlDebugSummary;
-- (int)bindClipboardSession;
-- (int)unbindClipboardSession;
-- (int)requestClipboardSnapshot;
-- (int)sendClipboardItemData:(NSData *)data
-                        type:(uint8_t)type
-                    mimeType:(NSString *)mimeType
-                        name:(NSString *)name
-                      itemId:(uint64_t)itemId
-                 contentHash:(uint64_t)contentHash;
+/// YES between connectionStarted and termination. The clipboard channel needs no separate binding.
+@property (atomic, readonly) BOOL clipboardReady;
+/// Sends one clipboard frame. Returns NO when the connection is not ready, the host
+/// does not support the clipboard channel, or the frame is invalid.
+- (BOOL)sendClipboardFrame:(MLClipboardFrame *)frame;
+/// Feature bits advertised by the host (LI_FF_*). Valid after connectionStarted.
+- (uint32_t)hostFeatureFlags;
+/// Fills transport counters for diagnostics. Returns NO when no snapshot is available.
 - (BOOL)getVideoDiagnosticSnapshot:(MLVideoDiagnosticSnapshot *)snapshot;
-- (void)notifyInputStreamReadyForMicrophoneControlIfNeeded;
 - (void)terminate;
 - (void)main;
 
