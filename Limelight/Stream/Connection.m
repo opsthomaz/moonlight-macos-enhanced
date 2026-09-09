@@ -40,6 +40,11 @@
 #undef AudioEncryptionEnabled
 #undef EncryptionFeaturesEnabled
 
+// Until the protocol port lands, the client drives the library's own global
+// context instead of embedding a private one, so the public (non-Ctx) API used
+// by the input and video paths resolves to the same connection.
+#define _connectionContext gConnectionContext
+
 #define AUDIO_QUEUE_BUFFERS 4
 #define AUDIO_DIRECT_BUFFER_DURATION 55
 #define AUDIO_ENHANCED_BUFFER_DURATION 60
@@ -146,7 +151,6 @@ typedef NS_ENUM(NSInteger, MLAudioRendererBackend) {
     char _gfeVersionString[32];
     char _rtspSessionUrl[1024];
 
-    ML_CONNECTION_CONTEXT _connectionContext;
     NSLock *_initLock;
 
     VideoDecoderRenderer *_renderer;
@@ -2098,7 +2102,7 @@ void ClConnectionStarted(void)
         return;
     }
 
-    PML_CONNECTION_CONTEXT callbackCtx = conn != nil ? &conn->_connectionContext : NULL;
+    PML_CONNECTION_CONTEXT callbackCtx = conn != nil ? &gConnectionContext : NULL;
     __weak Connection *weakMicConn = conn;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         if (callbackCtx != NULL) {
@@ -2261,6 +2265,8 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
 
 -(void) terminate
 {
+    ConnectionGetRendererSnapshot(self).frameSourceReady = NO;
+
     // Interrupt any action blocking LiStartConnection(). This is
     // thread-safe and done outside initLock on purpose, since we
     // won't be able to acquire it if LiStartConnection is in
@@ -2284,7 +2290,7 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
         if (conn == nil) {
             return;
         }
-        PML_CONNECTION_CONTEXT ctx = &conn->_connectionContext;
+        PML_CONNECTION_CONTEXT ctx = &gConnectionContext;
         os_unfair_lock_lock(&gConnectionLifecycleLock);
         LiStopConnectionCtx(ctx);
         os_unfair_lock_unlock(&gConnectionLifecycleLock);
@@ -2357,6 +2363,9 @@ void ClClipboardItemReceived(const LI_CLIPBOARD_ITEM *item)
 
     ConnectionSetRenderer(self, myRenderer);
     ConnectionSetCallbacks(self, callbacks);
+    // The display link may fire before the video stream starts; frames are
+    // pulled only while this flag is set, and it is cleared on terminate.
+    myRenderer.frameSourceReady = YES;
     _currentUpscalingMode = config.upscalingMode;
     _rendererStreamConfig = config;
 
