@@ -307,10 +307,9 @@ static float MLComputeRenderedOnePercentLowFps(const uint16_t *samples, NSUInteg
 static BOOL MLMetalFXIsSupported(void)
 {
 #if ML_HAS_METALFX
-    if (@available(macOS 13.0, *)) {
-        // If MetalFX is weak-linked on older systems, class lookup will be nil.
-        return NSClassFromString(@"MTLFXSpatialScalerDescriptor") != nil;
-    }
+    // If MetalFX is weak-linked on older systems, class lookup will be nil.
+    return NSClassFromString(@"MTLFXSpatialScalerDescriptor") != nil;
+    
 #endif
     return NO;
 }
@@ -1655,14 +1654,10 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     CGFloat referenceEDR = 0.0;
     CGDirectDisplayID displayId = screen != nil ? getDisplayID(screen) : 0;
     if (screen != nil) {
-        if (@available(macOS 10.15, *)) {
-            potentialEDR = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
-            currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
-            referenceEDR = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
-        } else if (@available(macOS 10.11, *)) {
-            currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
-            potentialEDR = currentEDR;
-        }
+        potentialEDR = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+        currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
+        referenceEDR = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
+        
     }
 
     const BOOL screenHasActiveEDRHeadroom = (currentEDR > 1.05f);
@@ -1739,31 +1734,28 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     }
 
     if (_hdrTransferMode == MLHDRTransferModeHLG) {
-        if (@available(macOS 10.15, *)) {
-            if (@available(macOS 14.0, *)) {
-                CFDataRef ambientViewingEnvironment = MLCreateHLGAmbientViewingEnvironmentData(_hdrHlgViewingEnvironment);
-                if (ambientViewingEnvironment != NULL) {
-                    _hdrEDRMetadata = [CAEDRMetadata HLGMetadataWithAmbientViewingEnvironment:(__bridge NSData *)ambientViewingEnvironment];
-                    CFRelease(ambientViewingEnvironment);
-                }
-            }
-            if (_hdrEDRMetadata == nil) {
-                _hdrEDRMetadata = CAEDRMetadata.HLGMetadata;
-            }
+        CFDataRef ambientViewingEnvironment = MLCreateHLGAmbientViewingEnvironmentData(_hdrHlgViewingEnvironment);
+        if (ambientViewingEnvironment != NULL) {
+            _hdrEDRMetadata = [CAEDRMetadata HLGMetadataWithAmbientViewingEnvironment:(__bridge NSData *)ambientViewingEnvironment];
+            CFRelease(ambientViewingEnvironment);
         }
+        
+        if (_hdrEDRMetadata == nil) {
+            _hdrEDRMetadata = CAEDRMetadata.HLGMetadata;
+        }
+        
     } else {
-        if (@available(macOS 10.15, *)) {
-            if (resolvedDisplayInfo != NULL || resolvedContentInfo != NULL) {
-                _hdrEDRMetadata = [CAEDRMetadata HDR10MetadataWithDisplayInfo:(__bridge NSData *)resolvedDisplayInfo
-                                                                  contentInfo:(__bridge NSData *)resolvedContentInfo
-                                                           opticalOutputScale:fmaxf(_hdrOpticalOutputScale, 1.0f)];
-            }
-            if (_hdrEDRMetadata == nil) {
-                _hdrEDRMetadata = [CAEDRMetadata HDR10MetadataWithMinLuminance:fmaxf(_hdrMinLuminance, 0.0f)
-                                                                  maxLuminance:fmaxf(_hdrMaxLuminance, 100.0f)
-                                                            opticalOutputScale:fmaxf(_hdrOpticalOutputScale, 1.0f)];
-            }
+        if (resolvedDisplayInfo != NULL || resolvedContentInfo != NULL) {
+            _hdrEDRMetadata = [CAEDRMetadata HDR10MetadataWithDisplayInfo:(__bridge NSData *)resolvedDisplayInfo
+                                                              contentInfo:(__bridge NSData *)resolvedContentInfo
+                                                       opticalOutputScale:fmaxf(_hdrOpticalOutputScale, 1.0f)];
         }
+        if (_hdrEDRMetadata == nil) {
+            _hdrEDRMetadata = [CAEDRMetadata HDR10MetadataWithMinLuminance:fmaxf(_hdrMinLuminance, 0.0f)
+                                                              maxLuminance:fmaxf(_hdrMaxLuminance, 100.0f)
+                                                        opticalOutputScale:fmaxf(_hdrOpticalOutputScale, 1.0f)];
+        }
+        
     }
 
     if (resolvedDisplayInfo != NULL) {
@@ -1801,11 +1793,8 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     NSScreen *screen = _view.window.screen ?: NSScreen.mainScreen;
     CGFloat currentEDR = 1.0;
     if (screen != nil) {
-        if (@available(macOS 10.15, *)) {
-            currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
-        } else if (@available(macOS 10.11, *)) {
-            currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
-        }
+        currentEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
+        
     }
 
     return currentEDR > 1.05;
@@ -1817,12 +1806,9 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     CGFloat potentialEDR = 1.0;
     CGFloat referenceEDR = 0.0;
     if (screen != nil) {
-        if (@available(macOS 10.15, *)) {
-            potentialEDR = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
-            referenceEDR = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
-        } else if (@available(macOS 10.11, *)) {
-            potentialEDR = screen.maximumExtendedDynamicRangeColorComponentValue;
-        }
+        potentialEDR = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+        referenceEDR = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
+        
     }
 
     return potentialEDR > 1.05 || referenceEDR > 0.0;
@@ -1847,44 +1833,38 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         }
     }
 
-    if (@available(macOS 15.0, *)) {
-        metalLayer.toneMapMode = (_enableHdr && (_hdrUsesTransferMetadataPresentation || _hdrOutputUsesEDR))
-            ? CAToneMapModeIfSupported
-            : CAToneMapModeAutomatic;
-    }
+    metalLayer.toneMapMode = (_enableHdr && (_hdrUsesTransferMetadataPresentation || _hdrOutputUsesEDR))
+        ? CAToneMapModeIfSupported
+        : CAToneMapModeAutomatic;
+    
 
     if (_enableHdr && _hdrToneMapToSDR) {
         metalLayer.wantsExtendedDynamicRangeContent = NO;
         metalLayer.colorspace = _hdrSDROutputColorSpace;
-        if (@available(macOS 10.15, *)) {
-            metalLayer.EDRMetadata = nil;
-        }
+        metalLayer.EDRMetadata = nil;
+        
     } else if (_enableHdr && _hdrUsesTransferMetadataPresentation) {
         metalLayer.wantsExtendedDynamicRangeContent = NO;
         metalLayer.colorspace = _hdrTransferColorSpace;
-        if (@available(macOS 10.15, *)) {
-            metalLayer.EDRMetadata = _hdrEDRMetadata;
-        }
+        metalLayer.EDRMetadata = _hdrEDRMetadata;
+        
     } else if (_enableHdr && _hdrOutputUsesEDR) {
         metalLayer.wantsExtendedDynamicRangeContent = YES;
         metalLayer.colorspace = _hdrLinearColorSpace;
-        if (@available(macOS 10.15, *)) {
-            metalLayer.EDRMetadata = _hdrEDRMetadata;
-        }
+        metalLayer.EDRMetadata = _hdrEDRMetadata;
+        
     } else if (_enableHdr) {
         const BOOL nonEDRHLGPresentation = (_hdrTransferMode == MLHDRTransferModeHLG &&
                                             !_preparedHDRDisplayHasEDRHeadroom);
         metalLayer.wantsExtendedDynamicRangeContent = nonEDRHLGPresentation ? NO : YES;
         metalLayer.colorspace = _hdrTransferColorSpace;
-        if (@available(macOS 10.15, *)) {
-            metalLayer.EDRMetadata = nil;
-        }
+        metalLayer.EDRMetadata = nil;
+        
     } else {
         metalLayer.wantsExtendedDynamicRangeContent = NO;
         metalLayer.colorspace = nil;
-        if (@available(macOS 10.15, *)) {
-            metalLayer.EDRMetadata = nil;
-        }
+        metalLayer.EDRMetadata = nil;
+        
     }
 }
 
@@ -2225,12 +2205,9 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         default:
             // On macOS 13+, prefer Enhanced (Metal) renderer for lower latency and
             // direct texture presentation, bypassing WindowServer compositor overhead.
-            if (@available(macOS 13.0, *)) {
-                candidateModes[candidateCount++] = MLActiveVideoRendererModeEnhanced;
-                candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
-            } else {
-                candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
-            }
+            candidateModes[candidateCount++] = MLActiveVideoRendererModeEnhanced;
+            candidateModes[candidateCount++] = MLActiveVideoRendererModeNative;
+            
             candidateModes[candidateCount++] = MLActiveVideoRendererModeCompatibility;
             break;
     }
@@ -2452,11 +2429,8 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         !_timingCompatibilityMode) {
         // On macOS 13, reducing pending frames too aggressively causes stutter
         // due to drawable pipeline starvation. Keep at least 1 buffered frame.
-        if (@available(macOS 13.0, *)) {
-            target = MAX(target - 1, 1);
-        } else {
-            target -= 1;
-        }
+        target = MAX(target - 1, 1);
+        
     }
 
     if (displayRefreshRate > 0 && displayRefreshRate < (double)self.frameRate * 0.90) {
@@ -2465,11 +2439,8 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         } else {
             // On macOS 13+, keep at least 1 frame buffered when display refresh
             // can't keep up with stream FPS to avoid empty queue stutter.
-            if (@available(macOS 13.0, *)) {
-                target = MAX(target - 1, 1);
-            } else {
-                target -= 1;
-            }
+            target = MAX(target - 1, 1);
+            
         }
     }
 
@@ -2482,20 +2453,16 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
         if (!_didLogEnhancedStartupPacing) {
             _didLogEnhancedStartupPacing = YES;
             int startupTarget = 0;
-            if (@available(macOS 13.0, *)) {
-                startupTarget = 1;
-            }
+            startupTarget = 1;
+            
             Log(LOG_I, @"[video] Enhanced startup pacing enabled: pending=%d window=%dms",
                 startupTarget,
                 (int)kMLEnhancedStartupPacingWindowMs);
         }
         // On macOS 13+, keep at least 1 pending frame during startup to avoid
         // severe stutter from an empty frame queue.
-        if (@available(macOS 13.0, *)) {
-            target = MAX(target, 1);
-        } else {
-            target = 0;
-        }
+        target = MAX(target, 1);
+        
     }
 
     return MLClampInt(target, 0, 3);
@@ -2523,9 +2490,8 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
 
     // On macOS 13+, a minimum of 2 inflight buffers prevents GPU starvation
     // and drawable unavailability stalls that manifest as frame stutter.
-    if (@available(macOS 13.0, *)) {
-        return 2;
-    }
+    return 2;
+    
 
     return 1;
 }
@@ -2586,15 +2552,13 @@ static CGDirectDisplayID getDisplayID(NSScreen* screen)
     if ([metalLayer isKindOfClass:[CAMetalLayer class]]) {
         metalLayer.device = _device;
         metalLayer.presentsWithTransaction = NO;
-        if (@available(macOS 10.13, *)) {
-            metalLayer.allowsNextDrawableTimeout = MLBoolForDrawableTimeoutMode(_allowDrawableTimeoutMode,
-                                                                               _enableHdr,
-                                                                               MLActiveVideoRendererModeEnhanced);
-            metalLayer.displaySyncEnabled = MLBoolForDisplaySyncMode(_displaySyncMode, _timingEnableVsync);
-        }
-        if (@available(macOS 10.15, *)) {
-            metalLayer.maximumDrawableCount = desiredDrawableDepth;
-        }
+        metalLayer.allowsNextDrawableTimeout = MLBoolForDrawableTimeoutMode(_allowDrawableTimeoutMode,
+                                                                           _enableHdr,
+                                                                           MLActiveVideoRendererModeEnhanced);
+        metalLayer.displaySyncEnabled = MLBoolForDisplaySyncMode(_displaySyncMode, _timingEnableVsync);
+        
+        metalLayer.maximumDrawableCount = desiredDrawableDepth;
+        
         [self applyHDRPresentationStateToMetalLayer:metalLayer];
     }
 
@@ -3012,22 +2976,20 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
         Log(LOG_W, @"Failed to enable VT realtime decode: %d", (int)status);
     }
 
-    if (@available(macOS 11.0, *)) {
-        status = VTSessionSetProperty(_decompressionSession,
-                                      kVTDecompressionPropertyKey_PropagatePerFrameHDRDisplayMetadata,
-                                      kCFBooleanTrue);
-        if (status != noErr) {
-            Log(LOG_W, @"Failed to enable per-frame HDR metadata propagation: %d", (int)status);
-        }
+    status = VTSessionSetProperty(_decompressionSession,
+                                  kVTDecompressionPropertyKey_PropagatePerFrameHDRDisplayMetadata,
+                                  kCFBooleanTrue);
+    if (status != noErr) {
+        Log(LOG_W, @"Failed to enable per-frame HDR metadata propagation: %d", (int)status);
     }
-    if (@available(macOS 14.0, *)) {
-        status = VTSessionSetProperty(_decompressionSession,
-                                      kVTDecompressionPropertyKey_GeneratePerFrameHDRDisplayMetadata,
-                                      kCFBooleanTrue);
-        if (status != noErr) {
-            Log(LOG_W, @"Failed to enable per-frame HDR metadata generation: %d", (int)status);
-        }
+    
+    status = VTSessionSetProperty(_decompressionSession,
+                                  kVTDecompressionPropertyKey_GeneratePerFrameHDRDisplayMetadata,
+                                  kCFBooleanTrue);
+    if (status != noErr) {
+        Log(LOG_W, @"Failed to enable per-frame HDR metadata generation: %d", (int)status);
     }
+    
 
     CFTypeRef hardwareDecodeValue = NULL;
     status = VTSessionCopyProperty(_decompressionSession,
@@ -4112,82 +4074,81 @@ void decompressionOutputCallback(void *decompressionOutputRefCon, void *sourceFr
     }
 
 #if ML_HAS_METALFX
-    if (@available(macOS 13.0, *)) {
-        MTLFXSpatialScalerColorProcessingMode colorMode =
-            _enableHdr ? MTLFXSpatialScalerColorProcessingModeHDR : MTLFXSpatialScalerColorProcessingModePerceptual;
+    MTLFXSpatialScalerColorProcessingMode colorMode =
+        _enableHdr ? MTLFXSpatialScalerColorProcessingModeHDR : MTLFXSpatialScalerColorProcessingModePerceptual;
 
-        CGFloat sourceAspect = sourceTexture.height > 0
-            ? (CGFloat)sourceTexture.width / (CGFloat)sourceTexture.height
-            : 1.0;
-        CGFloat drawableAspect = drawable.texture.height > 0
-            ? (CGFloat)drawable.texture.width / (CGFloat)drawable.texture.height
-            : sourceAspect;
-        NSUInteger scalerOutputWidth = drawable.texture.width;
-        NSUInteger scalerOutputHeight = drawable.texture.height;
-        if (sourceAspect > drawableAspect) {
-            scalerOutputHeight = MAX((NSUInteger)1,
-                                     (NSUInteger)floor((CGFloat)drawable.texture.width / sourceAspect));
-        } else if (sourceAspect < drawableAspect) {
-            scalerOutputWidth = MAX((NSUInteger)1,
-                                    (NSUInteger)floor((CGFloat)drawable.texture.height * sourceAspect));
-        }
-        BOOL outputMatchesDrawable = scalerOutputWidth == drawable.texture.width &&
-                                      scalerOutputHeight == drawable.texture.height;
-
-        if (_spatialScaler
-            && ([_spatialScaler inputWidth] != sourceTexture.width
-                || [_spatialScaler inputHeight] != sourceTexture.height
-                || [_spatialScaler outputWidth] != scalerOutputWidth
-                || [_spatialScaler outputHeight] != scalerOutputHeight
-                || [_spatialScaler colorTextureFormat] != sourceTexture.pixelFormat
-                || [_spatialScaler outputTextureFormat] != view.colorPixelFormat
-                || [_spatialScaler colorProcessingMode] != colorMode)) {
-            _spatialScaler = nil;
-        }
-
-        if (!_spatialScaler) {
-            MTLFXSpatialScalerDescriptor *scalerDesc = [[MTLFXSpatialScalerDescriptor alloc] init];
-            scalerDesc.inputWidth = sourceTexture.width;
-            scalerDesc.inputHeight = sourceTexture.height;
-            scalerDesc.outputWidth = scalerOutputWidth;
-            scalerDesc.outputHeight = scalerOutputHeight;
-            scalerDesc.colorTextureFormat = sourceTexture.pixelFormat;
-            scalerDesc.outputTextureFormat = view.colorPixelFormat;
-            scalerDesc.colorProcessingMode = colorMode;
-            _spatialScaler = [scalerDesc newSpatialScalerWithDevice:_device];
-        }
-
-        if (!_spatialScaler) {
-            return NO;
-        }
-
-        id<MTLTexture> targetTexture = drawable.texture;
-        if (!outputMatchesDrawable || drawable.texture.storageMode != MTLStorageModePrivate) {
-            if (!_upscaledTexture || _upscaledTexture.width != scalerOutputWidth
-                || _upscaledTexture.height != scalerOutputHeight
-                || _upscaledTexture.pixelFormat != drawable.texture.pixelFormat) {
-                MTLTextureDescriptor *upscaledDesc =
-                    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawable.texture.pixelFormat
-                                                                      width:scalerOutputWidth
-                                                                     height:scalerOutputHeight
-                                                                  mipmapped:NO];
-                upscaledDesc.storageMode = MTLStorageModePrivate;
-                upscaledDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-                _upscaledTexture = [_device newTextureWithDescriptor:upscaledDesc];
-            }
-            targetTexture = _upscaledTexture;
-        }
-
-        [_spatialScaler setColorTexture:sourceTexture];
-        [_spatialScaler setOutputTexture:targetTexture];
-        [_spatialScaler encodeToCommandBuffer:commandBuffer];
-
-        if (targetTexture != drawable.texture) {
-            return [self encodePresentFromTexture:targetTexture toDrawable:drawable commandBuffer:commandBuffer];
-        }
-
-        return YES;
+    CGFloat sourceAspect = sourceTexture.height > 0
+        ? (CGFloat)sourceTexture.width / (CGFloat)sourceTexture.height
+        : 1.0;
+    CGFloat drawableAspect = drawable.texture.height > 0
+        ? (CGFloat)drawable.texture.width / (CGFloat)drawable.texture.height
+        : sourceAspect;
+    NSUInteger scalerOutputWidth = drawable.texture.width;
+    NSUInteger scalerOutputHeight = drawable.texture.height;
+    if (sourceAspect > drawableAspect) {
+        scalerOutputHeight = MAX((NSUInteger)1,
+                                 (NSUInteger)floor((CGFloat)drawable.texture.width / sourceAspect));
+    } else if (sourceAspect < drawableAspect) {
+        scalerOutputWidth = MAX((NSUInteger)1,
+                                (NSUInteger)floor((CGFloat)drawable.texture.height * sourceAspect));
     }
+    BOOL outputMatchesDrawable = scalerOutputWidth == drawable.texture.width &&
+                                  scalerOutputHeight == drawable.texture.height;
+
+    if (_spatialScaler
+        && ([_spatialScaler inputWidth] != sourceTexture.width
+            || [_spatialScaler inputHeight] != sourceTexture.height
+            || [_spatialScaler outputWidth] != scalerOutputWidth
+            || [_spatialScaler outputHeight] != scalerOutputHeight
+            || [_spatialScaler colorTextureFormat] != sourceTexture.pixelFormat
+            || [_spatialScaler outputTextureFormat] != view.colorPixelFormat
+            || [_spatialScaler colorProcessingMode] != colorMode)) {
+        _spatialScaler = nil;
+    }
+
+    if (!_spatialScaler) {
+        MTLFXSpatialScalerDescriptor *scalerDesc = [[MTLFXSpatialScalerDescriptor alloc] init];
+        scalerDesc.inputWidth = sourceTexture.width;
+        scalerDesc.inputHeight = sourceTexture.height;
+        scalerDesc.outputWidth = scalerOutputWidth;
+        scalerDesc.outputHeight = scalerOutputHeight;
+        scalerDesc.colorTextureFormat = sourceTexture.pixelFormat;
+        scalerDesc.outputTextureFormat = view.colorPixelFormat;
+        scalerDesc.colorProcessingMode = colorMode;
+        _spatialScaler = [scalerDesc newSpatialScalerWithDevice:_device];
+    }
+
+    if (!_spatialScaler) {
+        return NO;
+    }
+
+    id<MTLTexture> targetTexture = drawable.texture;
+    if (!outputMatchesDrawable || drawable.texture.storageMode != MTLStorageModePrivate) {
+        if (!_upscaledTexture || _upscaledTexture.width != scalerOutputWidth
+            || _upscaledTexture.height != scalerOutputHeight
+            || _upscaledTexture.pixelFormat != drawable.texture.pixelFormat) {
+            MTLTextureDescriptor *upscaledDesc =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawable.texture.pixelFormat
+                                                                  width:scalerOutputWidth
+                                                                 height:scalerOutputHeight
+                                                              mipmapped:NO];
+            upscaledDesc.storageMode = MTLStorageModePrivate;
+            upscaledDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+            _upscaledTexture = [_device newTextureWithDescriptor:upscaledDesc];
+        }
+        targetTexture = _upscaledTexture;
+    }
+
+    [_spatialScaler setColorTexture:sourceTexture];
+    [_spatialScaler setOutputTexture:targetTexture];
+    [_spatialScaler encodeToCommandBuffer:commandBuffer];
+
+    if (targetTexture != drawable.texture) {
+        return [self encodePresentFromTexture:targetTexture toDrawable:drawable commandBuffer:commandBuffer];
+    }
+
+    return YES;
+    
 #endif
 
     return NO;
@@ -5235,19 +5196,14 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,
 
                 Log(LOG_I, @"Constructing new HEVC format description");
 
-                if (@available(iOS 11.0, macOS 10.14, *)) {
-                    status = CMVideoFormatDescriptionCreateFromHEVCParameterSets(kCFAllocatorDefault,
-                                                                                 3, /* count of parameter sets */
-                                                                                 parameterSetPointers,
-                                                                                 parameterSetSizes,
-                                                                                 NAL_LENGTH_PREFIX_SIZE,
-                                                                                 nil,
-                                                                                 &formatDesc);
-                } else {
-                    // This means Moonlight-common-c decided to give us an HEVC stream
-                    // even though we said we couldn't support it. All we can do is abort().
-                    abort();
-                }
+                status = CMVideoFormatDescriptionCreateFromHEVCParameterSets(kCFAllocatorDefault,
+                                                                             3, /* count of parameter sets */
+                                                                             parameterSetPointers,
+                                                                             parameterSetSizes,
+                                                                             NAL_LENGTH_PREFIX_SIZE,
+                                                                             nil,
+                                                                             &formatDesc);
+                
 
                 if (status != noErr) {
                     Log(LOG_E, @"Failed to create HEVC format description: %d", (int)status);

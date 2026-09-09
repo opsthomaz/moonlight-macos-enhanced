@@ -19,12 +19,9 @@ import IOKit.hidsystem
 @objcMembers
 final class CoreHIDMouseDriver: NSObject {
   private enum Failure {
-    static let unsupportedOSReason = "unsupported-os"
     static let permissionDeniedReason = "permission-denied"
     static let managerErrorReason = "manager-error"
     static let clientErrorReason = "client-error"
-
-    static let unsupportedOSMessageKey = "CoreHID Mouse requires macOS 15 or later."
     static let permissionDeniedMessageKey =
       "CoreHID Mouse access denied. Allow Input Monitoring in System Settings."
     static let runtimeErrorMessageKey = "CoreHID Mouse input failed."
@@ -63,14 +60,6 @@ final class CoreHIDMouseDriver: NSObject {
 
   func start() {
     stop()
-
-    guard #available(macOS 15.0, *) else {
-      postFailureIfNeeded(
-        reason: Failure.unsupportedOSReason,
-        messageKey: Failure.unsupportedOSMessageKey
-      )
-      return
-    }
 
     let permissionManager = InputMonitoringPermissionManager.sharedManager
     if requestsListenAccessIfNeeded {
@@ -111,8 +100,6 @@ final class CoreHIDMouseDriver: NSObject {
   deinit {
     stop()
   }
-
-  @available(macOS 15.0, *)
   private func monitorManager() async {
     let manager = HIDDeviceManager()
     let criteria = HIDDeviceManager.DeviceMatchingCriteria(primaryUsage: .genericDesktop(.mouse))
@@ -166,8 +153,6 @@ final class CoreHIDMouseDriver: NSObject {
       }
     }
   }
-
-  @available(macOS 15.0, *)
   private func monitorClient(_ client: HIDDeviceClient) async {
     let allElements = await client.elements
     let movementElements = allElements.filter { element in
@@ -229,8 +214,6 @@ final class CoreHIDMouseDriver: NSObject {
       }
     }
   }
-
-  @available(macOS 15.0, *)
   private func shouldMonitorDevice(_ client: HIDDeviceClient) async -> Bool {
     if await client.isBuiltIn {
       return false
@@ -244,16 +227,12 @@ final class CoreHIDMouseDriver: NSObject {
 
     return true
   }
-
-  @available(macOS 15.0, *)
   private func valueAsDelta(_ value: HIDElement.Value) -> Double {
     if let logicalValue = value.logicalValue(asTypeTruncatingIfNeeded: Int64.self) {
       return Double(logicalValue)
     }
     return Double(value.integerValue(asTypeTruncatingIfNeeded: Int64.self))
   }
-
-  @available(macOS 15.0, *)
   private func isMovementUsage(_ usage: HIDUsage) -> Bool {
     if case .genericDesktop(.x) = usage {
       return true

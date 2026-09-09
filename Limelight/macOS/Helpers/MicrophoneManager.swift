@@ -412,7 +412,7 @@ final class InputMonitoringPermissionManager: NSObject, ObservableObject {
             return true
         }
 
-        guard interactive, #available(macOS 15.0, *) else {
+        guard interactive else {
             DispatchQueue.main.async {
                 self.applySystemAuthorizationState(currentState)
             }
@@ -502,10 +502,6 @@ final class InputMonitoringPermissionManager: NSObject, ObservableObject {
     }
 
     private static func currentSystemAuthorizationState() -> InputMonitoringAuthorizationState {
-        guard #available(macOS 15.0, *) else {
-            return .unsupported
-        }
-
         let cgGranted = CGPreflightListenEventAccess()
         let ioState = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
         if ioState == kIOHIDAccessTypeGranted || cgGranted {
@@ -566,7 +562,6 @@ final class InputMonitoringPermissionManager: NSObject, ObservableObject {
         }
     }
 
-    @available(macOS 15.0, *)
     private func performInteractiveAuthorizationRequest() -> Bool {
         isRequestingAuthorization = true
         NSApp.activate(ignoringOtherApps: true)

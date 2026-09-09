@@ -47,7 +47,7 @@ static inline BOOL HIDPhysicalWheelModePrefersHighPrecision(HIDPhysicalWheelMode
 
 @implementation HIDSupport (Scroll)
 
-- (void)handleGCMouseScrollValueY:(float)value API_AVAILABLE(macos(11.0)) {
+- (void)handleGCMouseScrollValueY:(float)value {
     if (!self.useGCMouse || !self.shouldSendInputEvents || !isfinite(value) || value == 0.0f) {
         return;
     }

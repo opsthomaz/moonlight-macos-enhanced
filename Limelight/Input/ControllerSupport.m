@@ -415,12 +415,11 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
         // doesn't have a Select button (which indicates it probably doesn't have a proper
         // Start button either).
         BOOL useLegacyPausedHandler = YES;
-        if (@available(iOS 13.0, tvOS 13.0, macOS 10.15, *)) {
-            if (controller.extendedGamepad != nil &&
-                controller.extendedGamepad.buttonOptions != nil) {
-                useLegacyPausedHandler = NO;
-            }
+        if (controller.extendedGamepad != nil &&
+            controller.extendedGamepad.buttonOptions != nil) {
+            useLegacyPausedHandler = NO;
         }
+        
         
         if (useLegacyPausedHandler) {
             controller.controllerPausedHandler = ^(GCController *controller) {
@@ -490,31 +489,28 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
                 UPDATE_BUTTON_FLAG(limeController, RB_FLAG, gamepad.rightShoulder.pressed);
                 
                 // Yay, iOS 12.1 now supports analog stick buttons
-                if (@available(iOS 12.1, tvOS 12.1, macOS 10.14.1, *)) {
-                    if (gamepad.leftThumbstickButton != nil) {
-                        UPDATE_BUTTON_FLAG(limeController, LS_CLK_FLAG, gamepad.leftThumbstickButton.pressed);
-                    }
-                    if (gamepad.rightThumbstickButton != nil) {
-                        UPDATE_BUTTON_FLAG(limeController, RS_CLK_FLAG, gamepad.rightThumbstickButton.pressed);
-                    }
+                if (gamepad.leftThumbstickButton != nil) {
+                    UPDATE_BUTTON_FLAG(limeController, LS_CLK_FLAG, gamepad.leftThumbstickButton.pressed);
+                }
+                if (gamepad.rightThumbstickButton != nil) {
+                    UPDATE_BUTTON_FLAG(limeController, RS_CLK_FLAG, gamepad.rightThumbstickButton.pressed);
                 }
                 
-                if (@available(iOS 13.0, tvOS 13.0, macOS 10.15, *)) {
-                    // For older MFi gamepads, the menu button will already be handled by
-                    // the controllerPausedHandler.
-                    UPDATE_BUTTON_FLAG(limeController, PLAY_FLAG, gamepad.buttonMenu.pressed);
-                    
-                    // Options button is optional (only present on Xbox One S and PS4 gamepads)
-                    if (gamepad.buttonOptions != nil) {
-                        UPDATE_BUTTON_FLAG(limeController, BACK_FLAG, gamepad.buttonOptions.pressed);
-                    }
+                
+                // For older MFi gamepads, the menu button will already be handled by
+                // the controllerPausedHandler.
+                UPDATE_BUTTON_FLAG(limeController, PLAY_FLAG, gamepad.buttonMenu.pressed);
+                
+                // Options button is optional (only present on Xbox One S and PS4 gamepads)
+                if (gamepad.buttonOptions != nil) {
+                    UPDATE_BUTTON_FLAG(limeController, BACK_FLAG, gamepad.buttonOptions.pressed);
                 }
                 
-                if (@available(iOS 14.0, tvOS 14.0, macOS 11.0, *)) {
-                    if (gamepad.buttonHome != nil) {
-                        UPDATE_BUTTON_FLAG(limeController, SPECIAL_FLAG, gamepad.buttonHome.pressed);
-                    }
+                
+                if (gamepad.buttonHome != nil) {
+                    UPDATE_BUTTON_FLAG(limeController, SPECIAL_FLAG, gamepad.buttonHome.pressed);
                 }
+                
 
                 leftStickX = gamepad.leftThumbstick.xAxis.value * 0x7FFE;
                 leftStickY = gamepad.leftThumbstick.yAxis.value * 0x7FFE;
@@ -660,18 +656,16 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
         if (controller != NULL) {
             if (controller.extendedGamepad != NULL) {
                 level = OnScreenControlsLevelAutoGCExtendedGamepad;
-                if (@available(iOS 12.1, tvOS 12.1, macOS 10.14.1, *)) {
-                    if (controller.extendedGamepad.leftThumbstickButton != nil &&
-                        controller.extendedGamepad.rightThumbstickButton != nil) {
-                        level = OnScreenControlsLevelAutoGCExtendedGamepadWithStickButtons;
-                        if (@available(iOS 13.0, tvOS 13.0, macOS 10.15, *)) {
-                            if (controller.extendedGamepad.buttonOptions != nil) {
-                                // Has L3/R3 and Select, so we can show nothing :)
-                                level = OnScreenControlsLevelOff;
-                            }
-                        }
+                if (controller.extendedGamepad.leftThumbstickButton != nil &&
+                    controller.extendedGamepad.rightThumbstickButton != nil) {
+                    level = OnScreenControlsLevelAutoGCExtendedGamepadWithStickButtons;
+                    if (controller.extendedGamepad.buttonOptions != nil) {
+                        // Has L3/R3 and Select, so we can show nothing :)
+                        level = OnScreenControlsLevelOff;
                     }
+                    
                 }
+                
                 break;
             }
             else if (controller.gamepad != NULL) {
@@ -950,17 +944,16 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 -(void) setupDebouncersForController:(Controller*)controller {
-    if (@available(iOS 13.0, macOS 10.15, *)) {
-        if (controller.gamepad.extendedGamepad == nil) return;
-        
-        ButtonDebouncer *play = [[ButtonDebouncer alloc] initWithButton:PLAY_FLAG input:controller.gamepad.extendedGamepad.buttonMenu controllerSupport:self chordButton:SPECIAL_FLAG];
-        ButtonDebouncer *back = [[ButtonDebouncer alloc] initWithButton:BACK_FLAG input:controller.gamepad.extendedGamepad.buttonOptions controllerSupport:self chordButton:SPECIAL_FLAG];
-        play.other = back;
-        back.other = play;
-        
-        _debouncers[@(PLAY_FLAG)][@(controller.playerIndex)] = play;
-        _debouncers[@(BACK_FLAG)][@(controller.playerIndex)] = back;
-    }
+    if (controller.gamepad.extendedGamepad == nil) return;
+    
+    ButtonDebouncer *play = [[ButtonDebouncer alloc] initWithButton:PLAY_FLAG input:controller.gamepad.extendedGamepad.buttonMenu controllerSupport:self chordButton:SPECIAL_FLAG];
+    ButtonDebouncer *back = [[ButtonDebouncer alloc] initWithButton:BACK_FLAG input:controller.gamepad.extendedGamepad.buttonOptions controllerSupport:self chordButton:SPECIAL_FLAG];
+    play.other = back;
+    back.other = play;
+    
+    _debouncers[@(PLAY_FLAG)][@(controller.playerIndex)] = play;
+    _debouncers[@(BACK_FLAG)][@(controller.playerIndex)] = back;
+    
 }
 
 -(void) cleanup
@@ -1021,9 +1014,8 @@ static const double MOUSE_SPEED_DIVISOR = 2.5;
         BOOL startPressed = NO;
         
         if (gamepad) {
-            if (@available(iOS 13.0, tvOS 13.0, macOS 10.15, *)) {
-                startPressed = gamepad.buttonMenu.pressed;
-            }
+            startPressed = gamepad.buttonMenu.pressed;
+            
         }
         
         if (_gamepadMouseModeLongPressMenuEnabled && startPressed) {

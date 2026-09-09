@@ -54,7 +54,6 @@ struct StreamView: View {
 
   private func safeDisplayPixelSize() -> CGSize? {
     guard let screen = NSScreen.main else { return nil }
-    guard #available(macOS 12.0, *) else { return nil }
 
     let insets = screen.safeAreaInsets
     let safeFrame = NSRect(

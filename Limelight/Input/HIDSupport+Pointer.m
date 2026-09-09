@@ -412,7 +412,7 @@ static inline double HIDBlendFreeMouseGain(double currentGain, double rawDelta, 
     return YES;
 }
 
--(void)registerMouseCallbacks:(GCMouse *)mouse API_AVAILABLE(macos(11.0)) {
+-(void)registerMouseCallbacks:(GCMouse *)mouse {
     if (self.useGCMouse) {
         mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput * _Nonnull mouse, float deltaX, float deltaY) {
             self.mouseDeltaX += deltaX;
@@ -489,7 +489,7 @@ static inline double HIDBlendFreeMouseGain(double currentGain, double rawDelta, 
     }
 }
 
--(void)unregisterMouseCallbacks:(GCMouse*)mouse API_AVAILABLE(macos(11.0)) {
+-(void)unregisterMouseCallbacks:(GCMouse*)mouse {
     mouse.mouseInput.mouseMovedHandler = nil;
     
     mouse.mouseInput.leftButton.pressedChangedHandler = nil;

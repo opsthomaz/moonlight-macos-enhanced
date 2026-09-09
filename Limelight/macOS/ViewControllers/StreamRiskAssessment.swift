@@ -656,9 +656,8 @@ private struct StreamHostRuntimeInfo {
     case .h264:
       return true
     case .hevc:
-      if #available(macOS 10.14, *) {
-        return VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
-      }
+      return VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
+      
       return false
     case .av1:
       return VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
@@ -677,9 +676,8 @@ private struct StreamHostRuntimeInfo {
     if refresh > 0 {
       return refresh
     }
-    if #available(macOS 12.0, *) {
-      return Double(screen.maximumFramesPerSecond)
-    }
+    return Double(screen.maximumFramesPerSecond)
+    
     return 0
   }
 

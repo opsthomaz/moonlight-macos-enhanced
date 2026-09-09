@@ -1278,79 +1278,78 @@ void ArDecodeAndPlaySample(char* sampleData, int sampleLength)
         return NO;
     }
 
-    if (@available(macOS 10.15, *)) {
-        AVAudioFormat *sourceFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:opusConfig->sampleRate
-                                                                                     channels:2];
-        AVAudioFormat *renderFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:opusConfig->sampleRate
-                                                                                     channels:2];
-        [self prepareEnhancedDownmixConverterWithOpusConfig:opusConfig];
-        __weak Connection *weakSelf = self;
-        _enhancedAudioSourceNode = [[AVAudioSourceNode alloc] initWithFormat:sourceFormat renderBlock:^OSStatus(BOOL * _Nonnull isSilence,
-                                                                                                                const AudioTimeStamp * _Nonnull timestamp,
-                                                                                                                AVAudioFrameCount frameCount,
-                                                                                                                AudioBufferList * _Nonnull outputData) {
-            __strong Connection *strongSelf = weakSelf;
-            if (strongSelf == nil) {
-                return noErr;
-            }
-
-            [strongSelf renderEnhancedStereoPCMFrames:frameCount
-                                    toFloatBufferList:outputData];
-            *isSilence = NO;
+    AVAudioFormat *sourceFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:opusConfig->sampleRate
+                                                                                 channels:2];
+    AVAudioFormat *renderFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:opusConfig->sampleRate
+                                                                                 channels:2];
+    [self prepareEnhancedDownmixConverterWithOpusConfig:opusConfig];
+    __weak Connection *weakSelf = self;
+    _enhancedAudioSourceNode = [[AVAudioSourceNode alloc] initWithFormat:sourceFormat renderBlock:^OSStatus(BOOL * _Nonnull isSilence,
+                                                                                                            const AudioTimeStamp * _Nonnull timestamp,
+                                                                                                            AVAudioFrameCount frameCount,
+                                                                                                            AudioBufferList * _Nonnull outputData) {
+        __strong Connection *strongSelf = weakSelf;
+        if (strongSelf == nil) {
             return noErr;
-        }];
-
-        NSUInteger resolvedBandCount = 0;
-        MLEnhancedEQFrequencyTable(_enhancedAudioEQGains.count, &resolvedBandCount);
-        _enhancedAudioEngine = [[AVAudioEngine alloc] init];
-        _enhancedAudioReverb = [[AVAudioUnitReverb alloc] init];
-        _enhancedAudioEQ = [[AVAudioUnitEQ alloc] initWithNumberOfBands:(uint32_t)resolvedBandCount];
-
-        [_enhancedAudioEngine attachNode:_enhancedAudioSourceNode];
-        [_enhancedAudioEngine attachNode:_enhancedAudioReverb];
-        [_enhancedAudioEngine attachNode:_enhancedAudioEQ];
-
-        [_enhancedAudioEngine connect:_enhancedAudioSourceNode to:_enhancedAudioReverb format:sourceFormat];
-        [_enhancedAudioEngine connect:_enhancedAudioReverb to:_enhancedAudioEQ format:renderFormat];
-        [_enhancedAudioEngine connect:_enhancedAudioEQ to:_enhancedAudioEngine.mainMixerNode format:renderFormat];
-        [self configureEnhancedAudioUnits];
-
-        [_enhancedAudioEngine prepare];
-
-        NSError *error = nil;
-        if (![_enhancedAudioEngine startAndReturnError:&error]) {
-            Log(LOG_W, @"Failed to start enhanced audio renderer: %@", error.localizedDescription);
-            [self cleanupSelectedAudioRenderer];
-            return NO;
         }
 
-        _audioRenderChannelCount = 2;
-        Log(LOG_I, @"Enhanced renderer using stereo virtualizer: streamChannels=%d target=%d preset=%d spatial=%.2f width=%.2f reverb=%.2f",
-            opusConfig->channelCount,
-            _enhancedAudioOutputTarget,
-            _enhancedAudioPreset,
-            _enhancedAudioSpatialIntensity,
-            _enhancedAudioSoundstageWidth,
-            _enhancedAudioReverbAmount);
-        if (_enhancedUsesCoreAudioDownmix) {
-            Log(LOG_I, @"Enhanced renderer Core Audio downmix active: streamChannels=%d -> stereo", opusConfig->channelCount);
-        } else if (opusConfig->channelCount > 2) {
-            Log(LOG_I, @"Enhanced renderer using manual surround virtualization: streamChannels=%d -> stereo", opusConfig->channelCount);
-        } else {
-            Log(LOG_W, @"Enhanced renderer Core Audio downmix unavailable; using manual stereo virtualization fallback");
-        }
-        if (opusConfig->channelCount > 2) {
-            Log(LOG_I, @"Enhanced multichannel virtualization active: streamChannels=%d -> stereo", opusConfig->channelCount);
-        }
-        Log(LOG_I, @"Initialized enhanced audio renderer: preset=%d target=%d spatial=%.2f width=%.2f samplesPerFrame=%d bufferEntries=%d",
-            _enhancedAudioPreset,
-            _enhancedAudioOutputTarget,
-            _enhancedAudioSpatialIntensity,
-            _enhancedAudioSoundstageWidth,
-            opusConfig->samplesPerFrame,
-            _audioBufferEntries);
-        return YES;
+        [strongSelf renderEnhancedStereoPCMFrames:frameCount
+                                toFloatBufferList:outputData];
+        *isSilence = NO;
+        return noErr;
+    }];
+
+    NSUInteger resolvedBandCount = 0;
+    MLEnhancedEQFrequencyTable(_enhancedAudioEQGains.count, &resolvedBandCount);
+    _enhancedAudioEngine = [[AVAudioEngine alloc] init];
+    _enhancedAudioReverb = [[AVAudioUnitReverb alloc] init];
+    _enhancedAudioEQ = [[AVAudioUnitEQ alloc] initWithNumberOfBands:(uint32_t)resolvedBandCount];
+
+    [_enhancedAudioEngine attachNode:_enhancedAudioSourceNode];
+    [_enhancedAudioEngine attachNode:_enhancedAudioReverb];
+    [_enhancedAudioEngine attachNode:_enhancedAudioEQ];
+
+    [_enhancedAudioEngine connect:_enhancedAudioSourceNode to:_enhancedAudioReverb format:sourceFormat];
+    [_enhancedAudioEngine connect:_enhancedAudioReverb to:_enhancedAudioEQ format:renderFormat];
+    [_enhancedAudioEngine connect:_enhancedAudioEQ to:_enhancedAudioEngine.mainMixerNode format:renderFormat];
+    [self configureEnhancedAudioUnits];
+
+    [_enhancedAudioEngine prepare];
+
+    NSError *error = nil;
+    if (![_enhancedAudioEngine startAndReturnError:&error]) {
+        Log(LOG_W, @"Failed to start enhanced audio renderer: %@", error.localizedDescription);
+        [self cleanupSelectedAudioRenderer];
+        return NO;
     }
+
+    _audioRenderChannelCount = 2;
+    Log(LOG_I, @"Enhanced renderer using stereo virtualizer: streamChannels=%d target=%d preset=%d spatial=%.2f width=%.2f reverb=%.2f",
+        opusConfig->channelCount,
+        _enhancedAudioOutputTarget,
+        _enhancedAudioPreset,
+        _enhancedAudioSpatialIntensity,
+        _enhancedAudioSoundstageWidth,
+        _enhancedAudioReverbAmount);
+    if (_enhancedUsesCoreAudioDownmix) {
+        Log(LOG_I, @"Enhanced renderer Core Audio downmix active: streamChannels=%d -> stereo", opusConfig->channelCount);
+    } else if (opusConfig->channelCount > 2) {
+        Log(LOG_I, @"Enhanced renderer using manual surround virtualization: streamChannels=%d -> stereo", opusConfig->channelCount);
+    } else {
+        Log(LOG_W, @"Enhanced renderer Core Audio downmix unavailable; using manual stereo virtualization fallback");
+    }
+    if (opusConfig->channelCount > 2) {
+        Log(LOG_I, @"Enhanced multichannel virtualization active: streamChannels=%d -> stereo", opusConfig->channelCount);
+    }
+    Log(LOG_I, @"Initialized enhanced audio renderer: preset=%d target=%d spatial=%.2f width=%.2f samplesPerFrame=%d bufferEntries=%d",
+        _enhancedAudioPreset,
+        _enhancedAudioOutputTarget,
+        _enhancedAudioSpatialIntensity,
+        _enhancedAudioSoundstageWidth,
+        opusConfig->samplesPerFrame,
+        _audioBufferEntries);
+    return YES;
+    
 
     return NO;
 }

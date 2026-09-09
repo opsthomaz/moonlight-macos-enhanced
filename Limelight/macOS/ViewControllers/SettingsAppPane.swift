@@ -120,11 +120,8 @@ struct AppView: View {
     let panel = NSSavePanel()
     panel.canCreateDirectories = true
     panel.nameFieldStringValue = "moonlight-debug.log"
-    if #available(macOS 11.0, *) {
-      panel.allowedContentTypes = [.plainText]
-    } else {
-      panel.allowedFileTypes = ["log", "txt"]
-    }
+    panel.allowedContentTypes = [.plainText]
+    
 
     let saveAction: (URL) -> Void = { destinationURL in
       do {
@@ -1200,11 +1197,8 @@ private struct DebugLogLiveView: View {
     let panel = NSSavePanel()
     panel.canCreateDirectories = true
     panel.nameFieldStringValue = "moonlight-debug-filtered.log"
-    if #available(macOS 11.0, *) {
-      panel.allowedContentTypes = [.plainText]
-    } else {
-      panel.allowedFileTypes = ["log", "txt"]
-    }
+    panel.allowedContentTypes = [.plainText]
+    
 
     let header = """
       # Moonlight Filtered Log
@@ -1466,12 +1460,11 @@ private struct DebugLogCategoryFilterMenuButton: NSViewRepresentable {
     button.controlSize = .small
     button.font = .systemFont(ofSize: 12, weight: .regular)
     button.lineBreakMode = .byTruncatingTail
-    if #available(macOS 11.0, *) {
-      button.image = NSImage(
-        systemSymbolName: "line.3.horizontal.decrease.circle",
-        accessibilityDescription: "Category Filter"
+    button.image = NSImage(
+    systemSymbolName: "line.3.horizontal.decrease.circle",
+    accessibilityDescription: "Category Filter"
       )
-    }
+    
     return button
   }
 
@@ -1543,9 +1536,8 @@ private struct DebugLogCategoryFilterMenuButton: NSViewRepresentable {
     }
 
     private func systemImage(named name: String) -> NSImage? {
-      if #available(macOS 11.0, *) {
-        return NSImage(systemSymbolName: name, accessibilityDescription: nil)
-      }
+      return NSImage(systemSymbolName: name, accessibilityDescription: nil)
+      
       return nil
     }
 

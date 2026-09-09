@@ -60,11 +60,8 @@ static NSString * const MoonlightSearchToolbarItemIdentifier = @"NewSearchToolba
     hostsVC.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     hostsVC.view.frame = self.view.bounds;
     
-    if (@available(macOS 13.0, *)) {
-        self.view.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleAutomatic;
-    } else if (@available(macOS 11.0, *)) {
-        self.view.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleLine;
-    }
+    self.view.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleAutomatic;
+    
 }
 
 - (void)viewWillAppear {
@@ -103,11 +100,8 @@ static NSString * const MoonlightSearchToolbarItemIdentifier = @"NewSearchToolba
     
     if (preferencesButton != nil) {
         NSString *toolTipKey;
-        if (@available(macOS 13.0, *)) {
-            toolTipKey = @"Settings";
-        } else {
-            toolTipKey = @"Preferences";
-        }
+        toolTipKey = @"Settings";
+        
         preferencesButton.toolTip = [[LanguageManager shared] localize:toolTipKey];
     }
 }
@@ -126,9 +120,8 @@ static NSString * const MoonlightSearchToolbarItemIdentifier = @"NewSearchToolba
         sidebarItem.target = self;
         sidebarItem.action = @selector(toggleSidebar:);
         sidebarItem.enabled = NO;
-        if (@available(macOS 11.0, *)) {
-            sidebarItem.navigational = YES;
-        }
+        sidebarItem.navigational = YES;
+        
 
         NSImage *sidebarImage = [NSImage imageWithSystemSymbolName:@"sidebar.leading" accessibilityDescription:nil];
         if (sidebarImage == nil) {

@@ -554,9 +554,8 @@ void ClConnectionStatusUpdate(int status)
     // Newer moonlight-common-c uses supportedVideoFormats for codec negotiation.
     int codecPreference = config.videoCodecPreference;
     BOOL hevcDecodeSupported = NO;
-    if (@available(iOS 11.3, tvOS 11.3, macOS 10.14, *)) {
-        hevcDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
-    }
+    hevcDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
+    
     BOOL hevcSupported = codecPreference >= 1 && hevcDecodeSupported;
     BOOL av1Supported = codecPreference >= 2 && VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1);
 

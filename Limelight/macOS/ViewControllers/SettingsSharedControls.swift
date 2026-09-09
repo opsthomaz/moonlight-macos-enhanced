@@ -1067,9 +1067,6 @@ extension CGSize: @retroactive Hashable {
 }
 
 #Preview {
-  if #available(macOS 13.0, *) {
-    return SettingsView()
-  } else {
-    return Text("Not supported")
-  }
+  return SettingsView()
+  
 }

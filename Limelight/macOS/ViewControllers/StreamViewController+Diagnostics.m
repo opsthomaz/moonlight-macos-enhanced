@@ -134,10 +134,9 @@
         
         // 为 NSVisualEffectView 设置圆角需要使用 maskedCorners
         container.layer.cornerRadius = 24.0;
-        if (@available(macOS 10.13, *)) {
-            container.layer.cornerCurve = kCACornerCurveContinuous;
-            container.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
-        }
+        container.layer.cornerCurve = kCACornerCurveContinuous;
+        container.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+        
         container.layer.masksToBounds = YES;
         
         // Shadow for better visibility
@@ -224,17 +223,14 @@
             if ([btn.cell isKindOfClass:[NSButtonCell class]]) {
                 ((NSButtonCell *)btn.cell).lineBreakMode = NSLineBreakByTruncatingTail;
             }
-            if (@available(macOS 11.0, *)) {
-                btn.image = [NSImage imageWithSystemSymbolName:iconName accessibilityDescription:nil];
-                btn.imagePosition = NSImageLeading;
-                btn.contentTintColor = [NSColor whiteColor];
-                // 设置图标和文字的间距
-                btn.imageHugsTitle = YES;
-                // 调整按钮对齐方式为居中
-                btn.alignment = NSTextAlignmentCenter;
-            } else {
-                btn.imagePosition = NSImageLeft;
-            }
+            btn.image = [NSImage imageWithSystemSymbolName:iconName accessibilityDescription:nil];
+            btn.imagePosition = NSImageLeading;
+            btn.contentTintColor = [NSColor whiteColor];
+            // 设置图标和文字的间距
+            btn.imageHugsTitle = YES;
+            // 调整按钮对齐方式为居中
+            btn.alignment = NSTextAlignmentCenter;
+            
             return btn;
         };
 
@@ -265,15 +261,12 @@
             if ([btn.cell isKindOfClass:[NSButtonCell class]]) {
                 ((NSButtonCell *)btn.cell).lineBreakMode = NSLineBreakByTruncatingTail;
             }
-            if (@available(macOS 11.0, *)) {
-                btn.image = [NSImage imageWithSystemSymbolName:iconName accessibilityDescription:nil];
-                btn.imagePosition = NSImageLeading;
-                btn.contentTintColor = [NSColor colorWithWhite:0.75 alpha:1.0];
-                btn.imageHugsTitle = YES;
-                btn.alignment = NSTextAlignmentCenter;
-            } else {
-                btn.imagePosition = NSImageLeft;
-            }
+            btn.image = [NSImage imageWithSystemSymbolName:iconName accessibilityDescription:nil];
+            btn.imagePosition = NSImageLeading;
+            btn.contentTintColor = [NSColor colorWithWhite:0.75 alpha:1.0];
+            btn.imageHugsTitle = YES;
+            btn.alignment = NSTextAlignmentCenter;
+            
             return btn;
         };
         

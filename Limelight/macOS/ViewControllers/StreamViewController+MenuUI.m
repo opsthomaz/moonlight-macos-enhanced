@@ -957,13 +957,12 @@
         symbol = @"cellularbars.1";
     }
 
-    if (@available(macOS 11.0, *)) {
-        NSImage *img = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
-        if (!img) {
-            img = [NSImage imageWithSystemSymbolName:@"wifi" accessibilityDescription:nil];
-        }
-        self.controlCenterSignalImageView.image = img;
+    NSImage *img = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
+    if (!img) {
+        img = [NSImage imageWithSystemSymbolName:@"wifi" accessibilityDescription:nil];
     }
+    self.controlCenterSignalImageView.image = img;
+    
 
     if (self.controlCenterTitleLabel) {
         self.controlCenterTitleLabel.stringValue = [self currentStreamHealthBadgeText];
@@ -1000,12 +999,11 @@
     self.edgeMenuPanel.contentView = panelContentView;
 
     NSImage *edgeMenuImage = [NSImage imageWithSystemSymbolName:@"slider.horizontal.3" accessibilityDescription:nil];
-    if (@available(macOS 11.0, *)) {
-        NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:18
-                                                                                             weight:NSFontWeightSemibold
-                                                                                              scale:NSImageSymbolScaleLarge];
-        edgeMenuImage = [edgeMenuImage imageWithSymbolConfiguration:config];
-    }
+    NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:18
+                                                                                         weight:NSFontWeightSemibold
+                                                                                          scale:NSImageSymbolScaleLarge];
+    edgeMenuImage = [edgeMenuImage imageWithSymbolConfiguration:config];
+    
 
     self.edgeMenuButton = [[MLEdgeMenuHandleView alloc] initWithFrame:panelContentView.bounds];
     self.edgeMenuButton.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -1258,9 +1256,8 @@
     [self.streamMenu removeAllItems];
 
     void (^setSymbol)(NSMenuItem *, NSString *) = ^(NSMenuItem *item, NSString *symbolName) {
-        if (@available(macOS 11.0, *)) {
-            item.image = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:nil];
-        }
+        item.image = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:nil];
+        
     };
 
     // 一级顶部：鼠标模式

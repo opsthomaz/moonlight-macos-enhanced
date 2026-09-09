@@ -200,8 +200,8 @@
 @end
 
 @interface HIDSupport (PointerInternal)
-- (void)registerMouseCallbacks:(GCMouse *)mouse API_AVAILABLE(macos(11.0));
-- (void)unregisterMouseCallbacks:(GCMouse *)mouse API_AVAILABLE(macos(11.0));
+- (void)registerMouseCallbacks:(GCMouse *)mouse;
+- (void)unregisterMouseCallbacks:(GCMouse *)mouse;
 - (BOOL)initializeDisplayLink;
 - (BOOL)dispatchVirtualFreeMouseDeltaX:(double)deltaX
                                 deltaY:(double)deltaY
@@ -238,7 +238,7 @@
 @end
 
 @interface HIDSupport (ScrollInternal)
-- (void)handleGCMouseScrollValueY:(float)value API_AVAILABLE(macos(11.0));
+- (void)handleGCMouseScrollValueY:(float)value;
 @end
 
 typedef NS_OPTIONS(NSUInteger, HIDInputCapabilityMask) {

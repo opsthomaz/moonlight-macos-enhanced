@@ -314,9 +314,8 @@ static const void *MoonlightOriginalToolbarToolTipKey = &MoonlightOriginalToolba
 
 - (NSString *)toolbarLocalizationKeyForItem:(NSToolbarItem *)item originalValue:(NSString *)originalValue {
     if ([item.itemIdentifier isEqualToString:@"PreferencesToolbarItem"]) {
-        if (@available(macOS 13.0, *)) {
-            return @"Settings";
-        }
+        return @"Settings";
+        
         return @"Preferences";
     }
     return originalValue;

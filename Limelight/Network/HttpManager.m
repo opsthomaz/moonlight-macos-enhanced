@@ -1063,20 +1063,14 @@ static const NSString* HTTPS_PORT = @"47984";
         }
         
         SecCertificateRef actualCert = NULL;
-        if (@available(macOS 12.0, *)) {
-            CFArrayRef certs = SecTrustCopyCertificateChain(challenge.protectionSpace.serverTrust);
-            if (certs) {
-                if (CFArrayGetCount(certs) > 0) {
-                    actualCert = (SecCertificateRef)CFArrayGetValueAtIndex(certs, 0);
-                }
-                CFRelease(certs);
+        CFArrayRef certs = SecTrustCopyCertificateChain(challenge.protectionSpace.serverTrust);
+        if (certs) {
+            if (CFArrayGetCount(certs) > 0) {
+                actualCert = (SecCertificateRef)CFArrayGetValueAtIndex(certs, 0);
             }
-        } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            actualCert = SecTrustGetCertificateAtIndex(challenge.protectionSpace.serverTrust, 0);
-#pragma clang diagnostic pop
+            CFRelease(certs);
         }
+        
 
         if (actualCert == nil) {
             Log(LOG_E, @"Server certificate parsing error");

@@ -437,9 +437,8 @@ extension SettingsModel {
   static var displayModes: [String] = ["Windowed", "Fullscreen", "Borderless Windowed"]
 
   static var isMetalFXSupported: Bool {
-    if #available(macOS 13.0, *) {
-      return true
-    }
+    return true
+    
     return false
   }
 

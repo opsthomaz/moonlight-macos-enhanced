@@ -689,18 +689,17 @@ class SettingsClass: NSObject {
         // (e.g. 3840x2160) even when macOS is running in HiDPI scaled mode.
 
         if fullscreenSafe {
-          if #available(macOS 12.0, *) {
-            let insets = screen.safeAreaInsets
+          let insets = screen.safeAreaInsets
             let safeFrame = NSRect(
-              x: screen.frame.origin.x + insets.left,
-              y: screen.frame.origin.y + insets.bottom,
-              width: max(0.0, screen.frame.size.width - insets.left - insets.right),
-              height: max(0.0, screen.frame.size.height - insets.top - insets.bottom)
+          x: screen.frame.origin.x + insets.left,
+          y: screen.frame.origin.y + insets.bottom,
+          width: max(0.0, screen.frame.size.width - insets.left - insets.right),
+          height: max(0.0, screen.frame.size.height - insets.top - insets.bottom)
             )
             if safeFrame.size.width > 0.0 && safeFrame.size.height > 0.0 {
-              return pixelSize(for: safeFrame, screen: screen)
+          return pixelSize(for: safeFrame, screen: screen)
             }
-          }
+          
         }
 
         let displayID: CGDirectDisplayID?

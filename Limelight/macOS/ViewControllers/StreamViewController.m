@@ -1143,9 +1143,8 @@ highFreqMotor:(unsigned short)highFreqMotor {
     streamConfig.videoCodecPreference = (int)MAX(0, MIN(codecPreference, 2));
 
     BOOL hevcDecodeSupported = NO;
-    if (@available(iOS 11.3, tvOS 11.3, macOS 10.14, *)) {
-        hevcDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
-    }
+    hevcDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
+    
     BOOL av1DecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1);
 
     streamConfig.allowHevc = streamConfig.videoCodecPreference != 0;
@@ -1248,9 +1247,8 @@ highFreqMotor:(unsigned short)highFreqMotor {
 
     if (self.useSystemControllerDriver) {
 
-        if (@available(iOS 13, tvOS 13, macOS 10.15, *)) {
-            self.controllerSupport = [[ControllerSupport alloc] initWithConfig:streamConfig presenceDelegate:self];
-        }
+        self.controllerSupport = [[ControllerSupport alloc] initWithConfig:streamConfig presenceDelegate:self];
+        
     }
     self.hidSupport = [[HIDSupport alloc] init:self.app.host];
     __weak typeof(self) weakSelf = self;
